@@ -1,0 +1,6 @@
+{
+  "name": "Campus Student Identity Inventory and Filtering System",
+  "description": "A web app for Bicol University Polangui Campus representing an inventory and filtering system for students and admins.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
