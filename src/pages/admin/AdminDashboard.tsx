@@ -3,10 +3,18 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { LogOut, Users, FileText, Trash2, UserPlus, Activity, Search, Filter, X, Eye } from "lucide-react";
 
+const AddressDisplay = ({ record, prefix }: { record: any, prefix: 'curr_' | 'perm_' }) => {
+  if (record[`${prefix}province`]) {
+    const street = record[`${prefix}street`] ? record[`${prefix}street`] + ', ' : '';
+    return <span>{street}{record[`${prefix}barangay`]}, {record[`${prefix}municipality`]}, {record[`${prefix}province`]}</span>;
+  }
+  return <span>{prefix === 'curr_' ? record.current_address : record.permanent_address} || 'N/A'</span>;
+};
+
 export default function AdminDashboard() {
   const { user, token, logout } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<"students" | "forms" | "logs">("students");
+  const [activeTab, setActiveTab] = useState<"students" | "forms" | "logs" | "advanced_filter">("students");
   const [students, setStudents] = useState<any[]>([]);
   const [forms, setForms] = useState<any[]>([]);
   const [logs, setLogs] = useState<any[]>([]);
@@ -15,10 +23,67 @@ export default function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState("");
   const [maxIncomeFilter, setMaxIncomeFilter] = useState("");
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
+
+  // Advanced Filter Settings
+  const [filterStep, setFilterStep] = useState<1 | 2 | 3>(1);
+  const [selectedFields, setSelectedFields] = useState<string[]>([]);
+  const [filterData, setFilterData] = useState<Record<string, string>>({});
+  const [filteredResults, setFilteredResults] = useState<any[]>([]);
+
+  const filterableFields = [
+    { key: "gender", label: "Gender" },
+    { key: "religion", label: "Religion" },
+    { key: "annualfam_income", label: "Family Income", hint: "Income below or exact match" },
+    { key: "indigenous_group", label: "Indigenous Group" },
+    { key: "program", label: "Program" },
+    { key: "year_level", label: "Year Level" },
+    { key: "scholarship_status", label: "Scholarship" },
+    { key: "curr_province", label: "Province" }
+  ];
+
+  const handleAdvancedFilterSubmit = () => {
+    const results = forms.filter(f => {
+      let matches = true;
+      for (const key of selectedFields) {
+        if (!filterData[key]) continue;
+        const searchVal = filterData[key].toLowerCase();
+        
+        if (key === "annualfam_income") {
+           const maxIncome = Number(filterData[key].replace(/[^0-9]/g, ''));
+           const studentIncome = Number(f[key] || 0);
+           if (studentIncome > maxIncome) matches = false;
+        } else if (key === "scholarship_status" || key === "indigenous_group") {
+            const studentVal = String(f[key] || "None").toLowerCase();
+            if(!studentVal.includes(searchVal)) matches = false;
+        } else {
+           const studentVal = String(f[key] || "").toLowerCase();
+           if (!studentVal.includes(searchVal)) matches = false;
+        }
+      }
+      return matches;
+    });
+
+    results.sort((a, b) => {
+      if (a.year_level !== b.year_level) return String(a.year_level).localeCompare(String(b.year_level));
+      const nameA = `${a.last_name} ${a.first_name} ${a.middle_name}`.toLowerCase();
+      const nameB = `${b.last_name} ${b.first_name} ${b.middle_name}`.toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+
+    setFilteredResults(results);
+    setFilterStep(3);
+  };
   
   const [showAddForm, setShowAddForm] = useState(false);
   const [newStudent, setNewStudent] = useState({ student_number: "", password: "" });
   const [error, setError] = useState("");
+
+  const calculateAge = (dob?: string) => {
+      if (!dob) return "";
+      const diffTimestamp = Date.now() - new Date(dob).getTime();
+      const ageDate = new Date(diffTimestamp);
+      return Math.abs(ageDate.getUTCFullYear() - 1970);
+  };
 
   const handleLogout = () => { logout(); navigate("/"); };
 
@@ -44,9 +109,9 @@ export default function AdminDashboard() {
   };
 
   useEffect(() => {
-    if (activeTab === "students") fetchStudents();
-    else if (activeTab === "forms") fetchForms();
-    else if (activeTab === "logs") fetchLogs();
+    fetchStudents();
+    fetchForms();
+    fetchLogs();
   }, [activeTab]);
 
   const handleAddStudent = async (e: React.FormEvent) => {
@@ -81,10 +146,12 @@ export default function AdminDashboard() {
           <div className="w-10 h-10 bg-bu-orange rounded-full flex items-center justify-center font-bold">BU</div>
           <div><h1 className="text-lg font-bold m-0 text-center sm:text-left">CSIIFS Admin Dashboard</h1></div>
         </div>
-        <div className="flex flex-wrap justify-center items-center gap-2 sm:gap-4 text-sm">
-          <span className="bg-bu-orange px-2 py-0.5 rounded font-bold uppercase text-xs">System Admin</span>
-          <strong>{user?.username}</strong>
-          <button onClick={handleLogout} className="flex items-center hover:text-bu-orange"><LogOut className="w-4 h-4 mr-1" /> Logout</button>
+        <div className="flex flex-col items-center sm:items-end text-sm">
+          <div className="mb-1">
+            <span className="bg-bu-orange px-2 py-0.5 rounded font-bold uppercase text-[10px] mr-2">System Admin</span>
+            <strong className="tracking-wide">{user?.username}</strong>
+          </div>
+          <button onClick={handleLogout} className="flex items-center text-gray-300 hover:text-bu-orange text-xs mt-1 transition-colors"><LogOut className="w-3 h-3 mr-1" /> Sign out securely</button>
         </div>
       </header>
 
@@ -92,6 +159,7 @@ export default function AdminDashboard() {
         <div className="col-span-1 md:col-span-2 lg:col-span-4 bg-bu-blue text-white px-4 sm:px-5 py-3 rounded-xl flex flex-wrap gap-2 sm:gap-3">
           <button onClick={() => setActiveTab("students")} className={`flex items-center px-4 py-1.5 text-sm rounded ${activeTab==="students"?"bg-white/20":""}`}><Users className="mr-2 h-4 w-4" /> Students</button>
           <button onClick={() => setActiveTab("forms")} className={`flex items-center px-4 py-1.5 text-sm rounded ${activeTab==="forms"?"bg-white/20":""}`}><FileText className="mr-2 h-4 w-4" /> Records</button>
+          <button onClick={() => { setActiveTab("advanced_filter"); setFilterStep(1); setSelectedFields([]); }} className={`flex items-center px-4 py-1.5 text-sm rounded ${activeTab==="advanced_filter"?"bg-white/20":""}`}><Filter className="mr-2 h-4 w-4" /> Filter Out</button>
           <button onClick={() => setActiveTab("logs")} className={`flex items-center px-4 py-1.5 text-sm rounded ${activeTab==="logs"?"bg-white/20":""}`}><Activity className="mr-2 h-4 w-4" /> System Logs</button>
         </div>
 
@@ -163,56 +231,177 @@ export default function AdminDashboard() {
                           className="w-full pl-9 pr-3 py-2 border border-border-color rounded focus:outline-none focus:border-bu-blue text-sm"
                        />
                     </div>
-                    <div className="relative group w-48">
-                       <Filter className="w-4 h-4 absolute left-3 top-2.5 text-text-muted" />
-                       <input 
-                          type="number" 
-                          placeholder="Max Fam Income" 
-                          value={maxIncomeFilter} 
-                          onChange={(e)=>setMaxIncomeFilter(e.target.value)}
-                          className="w-full pl-9 pr-3 py-2 border border-border-color rounded focus:outline-none focus:border-bu-blue text-sm"
-                       />
-                    </div>
                 </div>
               </div>
-              <div className="w-full">
-                <table className="w-full text-xs sm:text-sm text-left">
-                    <thead className="border-b text-text-muted">
-                        <tr>
-                            <th className="py-3 font-semibold whitespace-nowrap">Student No.</th>
-                            <th className="py-3 font-semibold whitespace-nowrap">Full Name</th>
-                            <th className="py-3 font-semibold text-right">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    {forms.filter(f => {
-                       let matchesSearch = true;
-                       if(searchTerm) {
-                          const query = searchTerm.toLowerCase();
-                          const fullName = `${f.first_name} ${f.middle_name || ''} ${f.last_name}`.toLowerCase();
-                          matchesSearch = f.student_number.toLowerCase().includes(query) || fullName.includes(query);
-                       }
-                       let matchesIncome = true;
-                       if(maxIncomeFilter) {
-                          const income = Number(f.annualfam_income) || 0;
-                          matchesIncome = income <= Number(maxIncomeFilter);
-                       }
-                       return matchesSearch && matchesIncome;
-                    }).map(f => (
-                      <tr key={f.user_id} className="border-b cursor-pointer hover:bg-bu-blue/5 transition" onClick={() => setSelectedRecord(f)}>
-                        <td className="py-3 font-bold text-bu-blue whitespace-nowrap">{f.student_number}</td>
-                        <td className="py-3 font-semibold text-text-main whitespace-nowrap">{f.first_name} {f.middle_name ? f.middle_name + ' ' : ''}{f.last_name}</td>
-                        <td className="py-3 text-right">
-                           <button className="text-text-muted hover:text-bu-orange font-bold text-xs inline-flex items-center tracking-wide">
-                             <Eye className="w-4 h-4 mr-1"/> VIEW
-                           </button>
-                        </td>
-                      </tr>
-                    ))}
-                    {forms.length===0 && <tr><td colSpan={3} className="py-8 text-center text-text-muted font-medium">No inventory records have been submitted yet.</td></tr>}
-                  </tbody>
-                </table>
+              <div className="w-full space-y-6">
+                {(() => {
+                   const filteredForms = forms.filter(f => {
+                       if(!searchTerm) return true;
+                       const query = searchTerm.toLowerCase();
+                       const fullName = `${f.first_name} ${f.middle_name || ''} ${f.last_name}`.toLowerCase();
+                       return f.student_number.toLowerCase().includes(query) || fullName.includes(query);
+                   });
+                   
+                   if (filteredForms.length === 0) return <div className="py-8 text-center text-text-muted font-medium">No inventory records found.</div>;
+
+                   const grouped = filteredForms.reduce((acc, f) => {
+                       const year = f.year_level || 'Unknown Year';
+                       const prog = f.program || 'Unknown Program';
+                       const block = f.block_section || 'Unknown Block';
+                       if(!acc[year]) acc[year] = {};
+                       if(!acc[year][prog]) acc[year][prog] = {};
+                       if(!acc[year][prog][block]) acc[year][prog][block] = [];
+                       acc[year][prog][block].push(f);
+                       return acc;
+                   }, {} as Record<string, Record<string, Record<string, any[]>>>);
+
+                   const sortedYears = Object.keys(grouped).sort();
+
+                   return sortedYears.map(year => (
+                     <div key={year} className="mb-6">
+                        <h3 className="text-lg font-extrabold text-bu-orange border-b-2 border-bu-orange pb-1 mb-4">{year}</h3>
+                        {Object.keys(grouped[year]).sort().map(prog => (
+                          <div key={prog} className="ml-4 mb-5">
+                             <h4 className="text-md font-bold text-bu-blue mb-3">{prog}</h4>
+                             {Object.keys(grouped[year][prog]).sort().map(block => {
+                                const studentsInBlock = grouped[year][prog][block];
+                                return (
+                                  <div key={block} className="ml-4 mb-4 border border-border-color rounded-lg overflow-hidden flex flex-col">
+                                     <div className="bg-gray-50/80 px-4 py-2 border-b border-border-color text-sm font-bold text-text-main flex justify-between items-center">
+                                         <span>Block/Section: {block}</span>
+                                         <span className="bg-bu-blue text-white text-[10px] px-2 py-0.5 rounded-full">{studentsInBlock.length} Students</span>
+                                     </div>
+                                     <table className="w-full text-xs sm:text-sm text-left">
+                                        <thead className="border-b text-text-muted bg-white">
+                                            <tr>
+                                                <th className="py-2 px-4 font-semibold whitespace-nowrap">Student No.</th>
+                                                <th className="py-2 px-4 font-semibold whitespace-nowrap text-center">Full Name</th>
+                                                <th className="py-2 px-4 font-semibold text-right">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="bg-white">
+                                            {studentsInBlock.map((f: any) => (
+                                              <tr key={f.user_id} className="border-b last:border-b-0 cursor-pointer hover:bg-bu-blue/5 transition" onClick={() => setSelectedRecord(f)}>
+                                                <td className="py-3 px-4 font-bold text-bu-blue whitespace-nowrap">{f.student_number}</td>
+                                                <td className="py-3 px-4 font-semibold text-text-main whitespace-nowrap text-center">{f.last_name}, {f.first_name} {f.middle_name ? f.middle_name.charAt(0)+'.' : ''}</td>
+                                                <td className="py-3 px-4 text-right">
+                                                  <button className="text-text-muted hover:text-bu-orange font-bold text-[10px] sm:text-xs inline-flex items-center tracking-wide">
+                                                     <Eye className="w-4 h-4 mr-1"/> VIEW
+                                                  </button>
+                                                </td>
+                                              </tr>
+                                            ))}
+                                        </tbody>
+                                     </table>
+                                  </div>
+                                );
+                             })}
+                          </div>
+                        ))}
+                     </div>
+                   ));
+                })()}
               </div>
+            </div>
+          )}
+
+          {activeTab === "advanced_filter" && (
+            <div>
+              <h2 className="text-bu-blue font-bold uppercase mb-4">Filter Out Student Information</h2>
+              
+              {filterStep === 1 && (
+                <div className="space-y-6">
+                   <p className="text-sm font-semibold text-text-muted">Select the specific information you need in order to proceed in filtering student information.</p>
+                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                      {filterableFields.map(field => (
+                        <label key={field.key} className="flex items-center space-x-3 p-3 border border-border-color rounded-lg cursor-pointer hover:bg-bu-blue/5 transition">
+                           <input 
+                             type="checkbox" 
+                             checked={selectedFields.includes(field.key)}
+                             onChange={(e) => {
+                                if(e.target.checked) setSelectedFields([...selectedFields, field.key]);
+                                else setSelectedFields(selectedFields.filter(k => k !== field.key));
+                             }}
+                             className="w-4 h-4 text-bu-blue rounded focus:ring-bu-blue cursor-pointer"
+                           />
+                           <span className="text-sm font-bold text-text-main">{field.label}</span>
+                        </label>
+                      ))}
+                   </div>
+                   <button 
+                     onClick={() => setFilterStep(2)}
+                     disabled={selectedFields.length === 0}
+                     className="bg-bu-blue text-white px-6 py-2 rounded font-bold text-sm disabled:opacity-50 hover:bg-[#002244] transition-colors"
+                   >
+                     Proceed
+                   </button>
+                </div>
+              )}
+
+              {filterStep === 2 && (
+                <div className="space-y-6 animate-in fade-in duration-300">
+                   <p className="text-sm font-semibold text-text-muted">Input the required constraint data for your selected filters.</p>
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-gray-50 p-6 rounded-lg border border-border-color">
+                      {filterableFields.filter(f => selectedFields.includes(f.key)).map(field => (
+                        <div key={field.key}>
+                            <label className="block text-xs font-bold text-bu-blue uppercase mb-1">{field.label}</label>
+                            <input 
+                               type="text"
+                               placeholder={`Enter ${field.label.toLowerCase()}...`}
+                               value={filterData[field.key] || ""}
+                               onChange={(e) => setFilterData({...filterData, [field.key]: e.target.value})}
+                               className="w-full px-3 py-2 border border-border-color rounded focus:outline-none focus:border-bu-blue text-sm"
+                            />
+                            {field.hint && <p className="text-[10px] text-text-muted mt-1">{field.hint}</p>}
+                        </div>
+                      ))}
+                   </div>
+                   <div className="flex gap-4">
+                      <button onClick={() => setFilterStep(1)} className="px-6 py-2 rounded font-bold text-sm border border-border-color hover:bg-gray-100 transition-colors">Back</button>
+                      <button onClick={handleAdvancedFilterSubmit} className="bg-bu-blue text-white px-6 py-2 rounded font-bold text-sm hover:bg-[#002244] transition-colors">Confirm Filter</button>
+                   </div>
+                </div>
+              )}
+
+              {filterStep === 3 && (
+                <div className="space-y-6 animate-in slide-in-from-bottom-5 duration-300">
+                   <div className="flex justify-between items-center border-b border-border-color pb-4">
+                      <div>
+                        <h3 className="font-bold text-bu-orange">Filtered Results</h3>
+                        <p className="text-xs text-text-muted font-medium">{filteredResults.length} students matched your criteria.</p>
+                      </div>
+                      <button onClick={() => setFilterStep(1)} className="px-4 py-1.5 rounded font-bold text-xs border border-bu-blue text-bu-blue hover:bg-bu-blue hover:text-white transition-colors">Reset Filter</button>
+                   </div>
+
+                   <div className="w-full overflow-hidden border border-border-color rounded-lg">
+                      <table className="w-full text-xs sm:text-sm text-left">
+                          <thead className="border-b text-text-muted bg-gray-50/80">
+                              <tr>
+                                  <th className="py-3 px-4 font-semibold whitespace-nowrap">Student No.</th>
+                                  <th className="py-3 px-4 font-semibold whitespace-nowrap">Name (Alphabetical)</th>
+                                  <th className="py-3 px-4 font-semibold whitespace-nowrap text-center">Yr. Level</th>
+                                  <th className="py-3 px-4 font-semibold text-right">Action</th>
+                              </tr>
+                          </thead>
+                          <tbody className="bg-white">
+                              {filteredResults.map(f => (
+                                <tr key={f.user_id} className="border-b last:border-b-0 cursor-pointer hover:bg-bu-blue/5 transition" onClick={() => setSelectedRecord(f)}>
+                                  <td className="py-3 px-4 font-bold text-bu-blue whitespace-nowrap">{f.student_number}</td>
+                                  <td className="py-3 px-4 font-semibold text-text-main whitespace-nowrap">{f.last_name}, {f.first_name} {f.middle_name}</td>
+                                  <td className="py-3 px-4 whitespace-nowrap text-center font-bold text-bu-orange">{f.year_level}</td>
+                                  <td className="py-3 px-4 text-right">
+                                     <button className="text-text-muted hover:text-bu-orange font-bold text-[10px] sm:text-xs inline-flex items-center tracking-wide">
+                                       <Eye className="w-4 h-4 mr-1"/> VIEW
+                                     </button>
+                                  </td>
+                                </tr>
+                              ))}
+                              {filteredResults.length===0 && <tr><td colSpan={4} className="py-10 text-center text-text-muted text-base">No matches found with those selected qualities.</td></tr>}
+                          </tbody>
+                      </table>
+                   </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -266,47 +455,58 @@ export default function AdminDashboard() {
 
               <div className="p-8 space-y-8">
                  {/* Personal Info */}
-                 <div className="bg-white p-6 rounded-xl border border-border-color shadow-sm">
+                 <div className="bg-white p-6 rounded-xl border border-border-color shadow-sm relative group">
                     <h3 className="font-extrabold tracking-wide text-bu-blue border-b pb-3 mb-5 uppercase text-sm flex items-center"><Users className="w-4 h-4 mr-2 text-bu-orange"/> Personal Information</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-y-6 gap-x-4 text-sm">
-                        <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Full Name</span><strong className="text-test-main text-base">{selectedRecord.first_name} {selectedRecord.middle_name} {selectedRecord.last_name}</strong></div>
+                        <div className="col-span-1 sm:col-span-2 md:col-span-3">
+                            <span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Full Name</span>
+                            <strong className="text-text-main text-xl">{selectedRecord.last_name}, {selectedRecord.first_name} {selectedRecord.middle_name}</strong>
+                        </div>
                         <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Student No.</span><strong className="text-bu-blue font-extrabold">{selectedRecord.student_number}</strong></div>
-                        <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Gender</span><strong className="text-text-main">{selectedRecord.gender}</strong></div>
-                        <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Birth Date</span><strong className="text-text-main">{selectedRecord.birth_date}</strong></div>
-                        <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Citizenship</span><strong className="text-text-main">{selectedRecord.citizenship}</strong></div>
+                        <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Sex & Age</span><strong className="text-text-main">{selectedRecord.sex || selectedRecord.gender} • {calculateAge(selectedRecord.birth_date)} yrs old</strong></div>
+                        <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Birth Date</span><strong className="text-text-main">{selectedRecord.birth_date ? new Date(selectedRecord.birth_date).toLocaleDateString() : 'N/A'}</strong></div>
+                        <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Citizenship</span><strong className="text-text-main">{selectedRecord.citizenship || 'N/A'}</strong></div>
                         <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Religion</span><strong className="text-text-main">{selectedRecord.religion || 'N/A'}</strong></div>
                         <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Contact Number</span><strong className="text-text-main">{selectedRecord.contact_number}</strong></div>
-                        <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Email Address</span><strong className="text-text-main">{selectedRecord.email_address}</strong></div>
+                        <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Email Address</span><strong className="text-text-main truncate block">{selectedRecord.email_address}</strong></div>
                         <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Cellphone No.</span><strong className="text-text-main">{selectedRecord.cellphone_num}</strong></div>
                         <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Annual Income</span><strong className="text-green-700 bg-green-50 px-2 py-0.5 rounded border border-green-200">₱ {selectedRecord.annualfam_income || '0'}</strong></div>
                         <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Indigenous Group</span><strong className="text-text-main">{selectedRecord.indigenous_group || 'None'}</strong></div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm mt-6 pt-6 border-t border-gray-100">
-                        <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Current Address</span><strong className="text-text-main leading-relaxed">{selectedRecord.current_address}</strong></div>
-                        <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Permanent Address</span><strong className="text-text-main leading-relaxed">{selectedRecord.permanent_address}</strong></div>
+                        <div>
+                           <span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Current Address</span>
+                           <strong className="text-text-main leading-relaxed block"><AddressDisplay record={selectedRecord} prefix="curr_" /></strong>
+                           {selectedRecord.curr_zipcode && <span className="text-xs text-text-muted font-medium mt-1 block">ZIP: {selectedRecord.curr_zipcode}</span>}
+                        </div>
+                        <div>
+                           <span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Permanent Address</span>
+                           <strong className="text-text-main leading-relaxed block"><AddressDisplay record={selectedRecord} prefix="perm_" /></strong>
+                           {selectedRecord.perm_zipcode && <span className="text-xs text-text-muted font-medium mt-1 block">ZIP: {selectedRecord.perm_zipcode}</span>}
+                        </div>
                     </div>
                  </div>
 
                  {/* Academic Info */}
-                 <div className="bg-white p-6 rounded-xl border border-border-color shadow-sm">
+                 <div className="bg-white p-6 rounded-xl border border-border-color shadow-sm relative group">
                     <h3 className="font-extrabold tracking-wide text-bu-blue border-b pb-3 mb-5 uppercase text-sm flex items-center"><FileText className="w-4 h-4 mr-2 text-bu-orange"/> Academic Information</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-y-6 gap-x-4 text-sm">
                         <div className="col-span-1 md:col-span-2"><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Department</span><strong className="text-text-main">{selectedRecord.department}</strong></div>
                         <div className="col-span-1 md:col-span-2"><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Program</span><strong className="text-text-main">{selectedRecord.program}</strong></div>
                         <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Year & Block</span><strong className="text-text-main">{selectedRecord.year_level} - {selectedRecord.block_section}</strong></div>
-                        <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Enrollment Status</span><strong className="text-text-main">{selectedRecord.enrollment_status}</strong></div>
-                        <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Scholarship</span><strong className="text-text-main">{selectedRecord.scholarship_status}</strong></div>
+                        <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Enrollment Status</span><strong className="text-green-800 bg-green-100 px-2 py-0.5 rounded text-xs">{selectedRecord.enrollment_status}</strong></div>
+                        <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Scholarship</span><strong className="text-text-main">{selectedRecord.scholarship_status || 'None'}</strong></div>
                     </div>
                  </div>
 
                  {/* Physical & Health Info */}
-                 <div className="bg-white p-6 rounded-xl border border-border-color shadow-sm">
+                 <div className="bg-white p-6 rounded-xl border border-border-color shadow-sm relative group">
                     <h3 className="font-extrabold tracking-wide text-bu-blue border-b pb-3 mb-5 uppercase text-sm flex items-center"><Activity className="w-4 h-4 mr-2 text-bu-orange"/> Physical & Health Information</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-y-6 gap-x-4 text-sm">
-                        <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Height</span><strong className="text-text-main">{selectedRecord.height_cm} cm</strong></div>
-                        <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Weight</span><strong className="text-text-main">{selectedRecord.weight_kg} kg</strong></div>
-                        <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Blood Type</span><strong className="text-text-main">{selectedRecord.blood_type || 'N/A'}</strong></div>
-                        <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Disability</span><strong className="text-text-main">{selectedRecord.disability_status || 'None'}</strong></div>
+                        <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Height</span><strong className="text-text-main">{selectedRecord.height_cm || 'N/A'} cm</strong></div>
+                        <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Weight</span><strong className="text-text-main">{selectedRecord.weight_kg || 'N/A'} kg</strong></div>
+                        <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Blood Type</span><strong className="text-red-600 font-bold">{selectedRecord.blood_type || 'N/A'}</strong></div>
+                        <div className="col-span-1 md:col-span-2"><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Disability Status</span><strong className="text-text-main">{selectedRecord.disability_status !== 'None' && selectedRecord.disability_status ? <span className="bg-red-100 text-red-800 px-2 py-0.5 rounded text-xs">{selectedRecord.disability_status}</span> : 'None'}</strong></div>
                     </div>
                  </div>
               </div>
