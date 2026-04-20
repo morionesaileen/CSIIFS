@@ -14,6 +14,10 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const [forgotPwModal, setForgotPwModal] = useState(false);
+  const [mockEmail, setMockEmail] = useState("");
+  const [forgotPwMsg, setForgotPwMsg] = useState("");
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -42,6 +46,22 @@ export default function LoginPage() {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotPwMsg("Verifying...");
+    try {
+      const res = await fetch("/api/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: mockEmail })
+      });
+      const data = await res.json();
+      setForgotPwMsg(data.message);
+    } catch(err) {
+      setForgotPwMsg("An error occurred");
     }
   };
 
@@ -110,7 +130,10 @@ export default function LoginPage() {
             </div>
             
             {role === "student" && (
-              <div className="mt-4 text-center">
+              <div className="mt-4 text-center space-y-2">
+                <button type="button" onClick={() => setForgotPwModal(true)} className="text-sm font-semibold text-text-muted hover:text-bu-orange transition">
+                   Forgot Password?
+                </button>
                 <p className="text-sm text-text-muted">
                   Don't have an account?{" "}
                   <Link to="/register" className="font-semibold text-bu-blue hover:text-bu-orange transition">
@@ -122,6 +145,27 @@ export default function LoginPage() {
           </form>
         </div>
       </div>
+
+      {forgotPwModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-opacity">
+           <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
+              <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/80">
+                 <h2 className="font-bold text-bu-blue uppercase tracking-wide">Reset Password</h2>
+                 <button onClick={() => { setForgotPwModal(false); setForgotPwMsg(""); setMockEmail(""); }} className="text-gray-400 hover:text-gray-700 font-bold">&times;</button>
+              </div>
+              <div className="p-6">
+                <form onSubmit={handleForgotPassword} className="space-y-4">
+                  {forgotPwMsg && <div className="bg-blue-50 text-bu-blue p-3 rounded text-sm font-semibold">{forgotPwMsg}</div>}
+                  <div>
+                    <label className="block text-xs font-bold text-text-muted mb-2 uppercase tracking-wider">Student Email</label>
+                    <input type="email" required value={mockEmail} onChange={e=>setMockEmail(e.target.value)} className="w-full px-3 py-2 border border-border-color rounded focus:outline-none focus:border-bu-blue text-sm" placeholder="user@student.bicol-u.edu.ph" />
+                  </div>
+                  <button type="submit" className="w-full bg-bu-blue text-white py-2 rounded font-bold hover:bg-[#002244] shadow-sm transition-colors">Send Reset Link</button>
+                </form>
+              </div>
+           </div>
+        </div>
+      )}
     </div>
   );
 }

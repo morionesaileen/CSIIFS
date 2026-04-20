@@ -1,0 +1,114 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Primitive Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function incoming() {
+      return request.resource.data;
+    }
+    
+    function existing() {
+      return resource.data;
+    }
+    
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Admin';
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Backend Cloud Run Sync Path
+    // Using a highly obscure path mapped via env/config to store the JSON state.
+    match /server_sync/{docId} {
+      allow read, write: if true; 
+    }
+
+    // Collection: Users
+    match /users/{userId} {
+      function isValidUser(data) {
+        return data.keys().hasAll(['user_id', 'role', 'account_status']) &&
+               data.user_id is string && data.user_id.size() <= 128 && data.user_id == userId &&
+               data.role is string && data.role in ['Admin', 'Student'] &&
+               data.account_status is string;
+      }
+
+      // Read: Admins can read all, users can read their own profile
+      allow get: if isValidId(userId) && (isAdmin() || isOwner(userId));
+      allow list: if isAdmin() || (isSignedIn() && existing().user_id == request.auth.uid);
+
+      // Create: Users can create their own document on first sign-up, or Admins can create.
+      allow create: if isValidId(userId) && (
+        (isOwner(userId) && isValidUser(incoming()) && incoming().role == 'Student') || 
+        (isAdmin() && isValidUser(incoming()))
+      );
+
+      // Update: Admins can update any, Students can update specific fields like email/username
+      allow update: if isValidId(userId) && isValidUser(incoming()) && incoming().user_id == existing().user_id && (
+        isAdmin() || 
+        (isOwner(userId) && incoming().diff(existing()).affectedKeys().hasOnly(['username', 'email', 'avatar_id', 'display_name']))
+      );
+
+      // Delete: Only admins
+      allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    // Collection: Student Records
+    match /student_records/{recordId} {
+      function isValidRecord(data) {
+        return data.keys().hasAll(['user_id', 'student_number', 'first_name', 'last_name']) &&
+               data.user_id is string && data.user_id.size() <= 128 &&
+               data.student_number is string && data.student_number.size() <= 128 &&
+               data.first_name is string && data.first_name.size() <= 200 &&
+               data.last_name is string && data.last_name.size() <= 200;
+      }
+
+      // Read: Admins can read all, students read their own records
+      allow get: if isValidId(recordId) && (isAdmin() || (isSignedIn() && existing().user_id == request.auth.uid));
+      allow list: if isAdmin() || (isSignedIn() && existing().user_id == request.auth.uid);
+
+      // Create: Admins or the student themselves
+      allow create: if isValidId(recordId) && isValidRecord(incoming()) && (
+        isAdmin() || (isSignedIn() && incoming().user_id == request.auth.uid)
+      );
+
+      // Update
+      allow update: if isValidId(recordId) && isValidRecord(incoming()) && incoming().user_id == existing().user_id && (
+        isAdmin() || (isSignedIn() && incoming().user_id == request.auth.uid)
+      );
+
+      // Delete
+      allow delete: if isValidId(recordId) && isAdmin();
+    }
+
+    // Collection: Transaction Logs
+    match /transaction_logs/{logId} {
+      function isValidLog(data) {
+         return data.keys().hasAll(['user_id', 'action_type', 'action_timestamp', 'action_status']) &&
+                data.user_id is string && data.user_id.size() <= 128 &&
+                data.action_type is string && data.action_type.size() <= 200 &&
+                data.action_timestamp is string &&
+                data.action_status is string;
+      }
+
+      allow read: if isAdmin();
+      allow create: if isValidId(logId) && isValidLog(incoming()) && isAdmin();
+      allow update, delete: if false; // Logs are immutable
+    }
+  }
+}

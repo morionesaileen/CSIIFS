@@ -1,7 +1,16 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
-import { LogOut, FileText, History, CheckCircle } from "lucide-react";
+import { LogOut, FileText, History, CheckCircle, Settings, User as UserIcon } from "lucide-react";
+
+const AVATARS = [
+  "https://api.dicebear.com/7.x/bottts/svg?seed=Felix",
+  "https://api.dicebear.com/7.x/bottts/svg?seed=Aneka",
+  "https://api.dicebear.com/7.x/bottts/svg?seed=Jocelyn",
+  "https://api.dicebear.com/7.x/bottts/svg?seed=Robert",
+  "https://api.dicebear.com/7.x/bottts/svg?seed=Jack",
+  "https://api.dicebear.com/7.x/bottts/svg?seed=Mia"
+];
 
 const AddressDisplay = ({ record, prefix }: { record: any, prefix: 'curr_' | 'perm_' }) => {
   if (record[`${prefix}province`]) {
@@ -75,11 +84,42 @@ const philippineData: Record<string, Record<string, string[]>> = {
 };
 
 export default function StudentDashboard() {
-  const { user, token, logout } = useAuth();
+  const { user, token, logout, updateUser } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<"fill" | "history">("fill");
   const [successMsg, setSuccessMsg] = useState("");
   const [historicalData, setHistoricalData] = useState<any>(null);
+
+  const [profileModal, setProfileModal] = useState<"profile" | "settings" | null>(null);
+  const [settingsTab, setSettingsTab] = useState<"menu" | "privacy" | "password">("menu");
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [forgotPwMsg, setForgotPwMsg] = useState("");
+  
+  const [emailFocus, setEmailFocus] = useState(user?.email || "");
+  const [avatarFocus, setAvatarFocus] = useState(user?.avatar_id || AVATARS[0]);
+  const [nameFocus, setNameFocus] = useState(user?.display_name || "");
+
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [pwError, setPwError] = useState("");
+  const [pwSuccess, setPwSuccess] = useState("");
+  const [profileError, setProfileError] = useState("");
+
+  const handleInternalForgotPassword = async () => {
+    setForgotPwMsg("Verifying...");
+    try {
+      const res = await fetch("/api/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: user?.email || emailFocus })
+      });
+      const data = await res.json();
+      setForgotPwMsg(data.message);
+    } catch(err) {
+      setForgotPwMsg("An error occurred");
+    }
+  };
 
   const emptyForm = {
     first_name: "", middle_name: "", last_name: "", sex: "", birth_date: "",
@@ -103,6 +143,48 @@ export default function StudentDashboard() {
   };
 
   const handleLogout = () => { logout(); navigate("/"); };
+
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setProfileError("");
+    if(!emailFocus.includes('@')) return setProfileError("Enter a valid student email");
+    
+    try {
+      const res = await fetch("/api/users/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ email: emailFocus, avatar_id: avatarFocus, display_name: nameFocus })
+      });
+      if (res.ok) {
+         updateUser({ email: emailFocus, avatar_id: avatarFocus, display_name: nameFocus });
+         setProfileModal(null);
+      } else {
+         setProfileError("Failed to update profile");
+      }
+    } catch(err) { setProfileError("Error connecting to server") }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwError(""); setPwSuccess("");
+    if (newPw !== confirmPw) return setPwError("Passwords do not match");
+    if (newPw.length < 8) return setPwError("Password must be at least 8 characters");
+
+    try {
+      const res = await fetch("/api/users/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ currentPassword: currentPw, newPassword: newPw })
+      });
+      if (res.ok) {
+        setPwSuccess("Password successfully updated");
+        setCurrentPw(""); setNewPw(""); setConfirmPw("");
+      } else {
+        const data = await res.json();
+        setPwError(data.error || "Failed to update password");
+      }
+    } catch(err) { setPwError("An error occurred") }
+  };
 
   const fetchRecords = async () => {
     try {
@@ -139,14 +221,42 @@ export default function StudentDashboard() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans text-text-main bg-light-bg">
-      <header className="bg-bu-blue text-white px-4 sm:px-8 py-4 flex flex-col sm:flex-row justify-between items-center gap-4 border-b-4 border-bu-orange">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-bu-orange rounded-full flex items-center justify-center font-bold shrink-0">BU</div>
-          <div><h1 className="text-lg font-bold text-center sm:text-left">CSIIFS Student Portal</h1></div>
+      <header className="bg-bu-blue text-white px-4 sm:px-8 py-4 flex flex-col sm:flex-row justify-between items-center gap-4 border-b-4 border-bu-orange relative z-40">
+        <div className="flex items-center gap-4">
+          <div className="relative group">
+            <button onClick={() => setShowDropdown(!showDropdown)} className="flex flex-col items-center focus:outline-none">
+              <img src={user?.avatar_id || AVATARS[0]} alt="Avatar" className="w-10 h-10 rounded-full bg-white border-2 border-bu-orange object-cover shadow-sm hover:opacity-90 transition"/>
+              <span className="text-[10px] font-bold mt-1 uppercase tracking-wider text-gray-200">Profile</span>
+            </button>
+            
+            {showDropdown && (
+              <>
+                 <div className="fixed inset-0 z-40" onClick={() => setShowDropdown(false)}></div>
+                 <div className="absolute top-14 left-0 w-48 bg-white rounded-lg shadow-xl border border-gray-200 z-50 overflow-hidden text-text-main animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50">
+                       <p className="font-bold text-sm truncate">{user?.display_name || "Student"}</p>
+                       <p className="text-[10px] text-text-muted truncate">{user?.email || "No email set"}</p>
+                    </div>
+                    <div className="p-1">
+                      <button onClick={() => { setProfileModal("profile"); setShowDropdown(false); }} className="w-full text-left px-3 py-2 text-sm hover:bg-bu-blue/5 rounded flex items-center font-medium"><UserIcon className="w-4 h-4 mr-2 text-bu-blue"/> View Profile</button>
+                      <button onClick={() => { setProfileModal("settings"); setSettingsTab("menu"); setShowDropdown(false); }} className="w-full text-left px-3 py-2 text-sm hover:bg-bu-blue/5 rounded flex items-center font-medium"><Settings className="w-4 h-4 mr-2 text-bu-blue"/> Settings</button>
+                    </div>
+                    <div className="p-1 border-t border-gray-100">
+                      <button onClick={handleLogout} className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded flex items-center font-medium"><LogOut className="w-4 h-4 mr-2"/> Sign Out</button>
+                    </div>
+                 </div>
+              </>
+            )}
+          </div>
+          <div className="hidden sm:block">
+            <span className="font-semibold px-3 py-1 bg-white/10 rounded-full">Student No: {user?.student_number}</span>
+          </div>
         </div>
-        <div className="flex flex-col items-center sm:items-end text-sm w-full sm:w-auto">
-          <span className="font-semibold px-3 py-1 bg-white/10 rounded-full mb-1">Student No: {user?.student_number}</span>
-          <button onClick={handleLogout} className="flex items-center text-gray-300 hover:text-bu-orange text-xs mt-1 transition-colors"><LogOut className="w-3 h-3 mr-1" /> Sign out</button>
+        <div className="flex flex-col items-center sm:items-end text-sm w-full sm:w-auto mt-2 sm:mt-0">
+          <h1 className="text-lg font-bold text-center sm:text-right">CSIIFS Student Portal</h1>
+          <div className="sm:hidden mt-2">
+            <span className="font-semibold px-3 py-1 bg-white/10 rounded-full">Student No: {user?.student_number}</span>
+          </div>
         </div>
       </header>
 
@@ -542,6 +652,108 @@ export default function StudentDashboard() {
             </div>
           )}
       </main>
+
+      {profileModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-opacity">
+           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+              <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/80">
+                 <h2 className="font-bold text-bu-blue uppercase tracking-wide">
+                    {profileModal === "profile" ? "Complete Your Profile" : "Account Settings"}
+                 </h2>
+                 {user?.email && (
+                   <button onClick={() => setProfileModal(null)} className="text-gray-400 hover:text-gray-700 font-bold">&times;</button>
+                 )}
+              </div>
+              
+              <div className="p-6 max-h-[80vh] overflow-y-auto custom-scrollbar">
+                 {profileModal === "profile" ? (
+                   <form onSubmit={handleUpdateProfile} className="space-y-6">
+                      {profileError && <div className="bg-red-50 text-red-600 text-xs p-3 rounded font-bold">{profileError}</div>}
+                      
+                      <div>
+                         <label className="block text-xs font-bold text-text-muted mb-3 uppercase tracking-wider">Choose Avatar</label>
+                         <div className="grid grid-cols-3 gap-3">
+                            {AVATARS.map((url, i) => (
+                               <button type="button" key={i} onClick={() => setAvatarFocus(url)} className={`relative rounded-lg p-2 border-2 transition-all ${avatarFocus === url ? "border-bu-orange bg-orange-50" : "border-transparent bg-gray-50 hover:bg-gray-100"}`}>
+                                  <img src={url} alt={`Avatar option ${i+1}`} className="w-12 h-12 mx-auto" />
+                                  {avatarFocus === url && <div className="absolute -top-2 -right-2 bg-bu-orange text-white rounded-full p-0.5"><CheckCircle className="w-3 h-3"/></div>}
+                               </button>
+                            ))}
+                         </div>
+                      </div>
+
+                      <div className="space-y-4">
+                         <div>
+                            <label className="block text-xs font-bold text-text-muted mb-1 uppercase tracking-wider">Full Name <span className="text-red-500">*</span></label>
+                            <input type="text" required value={nameFocus} onChange={e=>setNameFocus(e.target.value)} placeholder="e.g., Juan De La Cruz" className="w-full px-3 py-2 border border-border-color rounded focus:outline-none focus:border-bu-blue text-sm" />
+                         </div>
+                         <div>
+                            <label className="block text-xs font-bold text-text-muted mb-1 uppercase tracking-wider">Student or School Email <span className="text-red-500">*</span></label>
+                            <input type="email" required value={emailFocus} onChange={e=>setEmailFocus(e.target.value)} placeholder="student@bicol-u.edu.ph" className="w-full px-3 py-2 border border-border-color rounded focus:outline-none focus:border-bu-blue text-sm" />
+                         </div>
+                      </div>
+                      
+                      <button type="submit" className="w-full bg-bu-blue text-white py-2.5 rounded font-bold hover:bg-[#002244] shadow-sm transition-colors">Save Profile</button>
+                   </form>
+                 ) : (
+                   <div className="space-y-5">
+                      {settingsTab === "menu" && (
+                         <div>
+                            <h3 className="font-bold text-sm border-b border-gray-100 pb-2 mb-4 text-bu-blue">General Account Settings</h3>
+                            <button onClick={() => setSettingsTab("privacy")} className="w-full text-left px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-lg font-medium border border-gray-200 transition-colors">Privacy and Security Settings</button>
+                         </div>
+                      )}
+                      
+                      {settingsTab === "privacy" && (
+                         <div>
+                            <button onClick={() => setSettingsTab("menu")} className="text-xs text-bu-blue font-bold mb-4 hover:underline">&larr; Back to Settings Menu</button>
+                            <h3 className="font-bold text-sm border-b border-gray-100 pb-2 mb-4 text-bu-blue">Privacy and Security</h3>
+                            <div className="space-y-3">
+                               <button onClick={() => setSettingsTab("password")} className="w-full text-left px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-lg font-medium border border-gray-200 transition-colors">Change Password</button>
+                            </div>
+                         </div>
+                      )}
+
+                      {settingsTab === "password" && (
+                         <form onSubmit={handleChangePassword}>
+                            <button type="button" onClick={() => setSettingsTab("privacy")} className="text-xs text-bu-blue font-bold mb-4 hover:underline">&larr; Back to Privacy</button>
+                            <h3 className="font-bold text-sm border-b border-gray-100 pb-2 mb-4 text-bu-blue">Update Password</h3>
+                            
+                            {pwError && <div className="bg-red-50 text-red-600 text-xs p-3 rounded font-bold mb-4">{pwError}</div>}
+                            {pwSuccess && <div className="bg-green-50 text-green-700 text-xs p-3 rounded font-bold mb-4">{pwSuccess}</div>}
+                            
+                            <div className="space-y-4">
+                               <div>
+                                  <label className="block text-xs font-bold text-text-muted mb-1 uppercase tracking-wider">Current Password</label>
+                                  <input type="password" required value={currentPw} onChange={e=>setCurrentPw(e.target.value)} className="w-full px-3 py-2 border border-border-color rounded focus:outline-none focus:border-bu-blue text-sm" />
+                               </div>
+                               <div>
+                                  <label className="block text-xs font-bold text-text-muted mb-1 uppercase tracking-wider">New Password</label>
+                                  <input type="password" required value={newPw} onChange={e=>setNewPw(e.target.value)} className="w-full px-3 py-2 border border-border-color rounded focus:outline-none focus:border-bu-blue text-sm" />
+                               </div>
+                               <div>
+                                  <label className="block text-xs font-bold text-text-muted mb-1 uppercase tracking-wider">Confirm New Password</label>
+                                  <input type="password" required value={confirmPw} onChange={e=>setConfirmPw(e.target.value)} className="w-full px-3 py-2 border border-border-color rounded focus:outline-none focus:border-bu-blue text-sm" />
+                               </div>
+                               
+                               <div className="pt-2">
+                                  <button type="submit" className="w-full bg-bu-blue text-white py-2.5 rounded font-bold hover:bg-[#002244] shadow-sm transition-colors">Save New Password</button>
+                               </div>
+
+                               <div className="text-center pt-4 border-t border-gray-100 mt-4">
+                                  <button type="button" onClick={handleInternalForgotPassword} className="text-xs font-bold text-text-muted hover:text-bu-orange transition-colors">Forgot Password?</button>
+                                  {forgotPwMsg && <div className="mt-2 text-xs text-bu-blue font-semibold">{forgotPwMsg}</div>}
+                               </div>
+                            </div>
+                         </form>
+                      )}
+                   </div>
+                 )}
+              </div>
+           </div>
+        </div>
+      )}
+
     </div>
   );
 }

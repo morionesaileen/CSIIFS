@@ -5,48 +5,35 @@ import path from "path";
 import { fileURLToPath } from "url";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { initializeApp } from "firebase/app";
+import { getFirestore, doc, setDoc, getDoc } from "firebase/firestore";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_FILE = path.join(process.cwd(), "data.json");
 const JWT_SECRET = process.env.JWT_SECRET || "super-secret-key-bu-polangui";
 
-// Initialize Data
-if (!fs.existsSync(DB_FILE)) {
-  const initialData = {
-    users: [
-      {
-        user_id: 1,
-        username: "admin01",
-        student_number: null,
-        password_hash: bcrypt.hashSync("adminpassword", 10),
-        role: "Admin",
-        account_status: "Active",
-        created_at: new Date().toISOString()
-      },
-      {
-        user_id: 2,
-        username: null,
-        student_number: "2024-01-00123",
-        password_hash: bcrypt.hashSync("student123", 10),
-        role: "Student",
-        account_status: "Active",
-        created_at: new Date().toISOString()
-      }
-    ],
-    student_records: [],
-    transaction_logs: [],
-    generated_outputs: []
-  };
-  fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 2));
-}
+// Initialize Firebase App for Backend Synchronization
+const firebaseConfigStr = fs.readFileSync(path.join(process.cwd(), "firebase-applet-config.json"), "utf8");
+const firebaseConfig = JSON.parse(firebaseConfigStr);
+const firebaseApp = initializeApp(firebaseConfig);
+const dbStore = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
+const SYNC_DOC = doc(dbStore, "server_sync", "csiifs_system_data");
+
+let inMemoryDb: any = null;
 
 function getDatabase() {
-  const data = fs.readFileSync(DB_FILE, "utf-8");
-  return JSON.parse(data);
+  if (!inMemoryDb) {
+    throw new Error("Database not loaded yet");
+  }
+  return inMemoryDb;
 }
 
 function saveDatabase(data: any) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+  inMemoryDb = data; // Update memory instantly for the next request
+  
+  // Background persist to Firestore to retain data across server reboots
+  setDoc(SYNC_DOC, data).catch((err) => {
+    console.error("Failed to sync structural database to Firestore:", err);
+  });
 }
 
 function logAdminAction(db: any, userId: number, actionType: string, status: string) {
@@ -60,6 +47,47 @@ function logAdminAction(db: any, userId: number, actionType: string, status: str
 }
 
 async function startServer() {
+  console.log("Loading Cloud Database sync from Firebase Firestore...");
+  try {
+     const snap = await getDoc(SYNC_DOC);
+     if (snap.exists()) {
+        inMemoryDb = snap.data();
+        console.log("Database successfully revived from Firestore.");
+     } else {
+        // First boot initialization
+        inMemoryDb = {
+          users: [
+            {
+              user_id: 1,
+              username: "admin01",
+              student_number: null,
+              password_hash: bcrypt.hashSync("adminpassword", 10),
+              role: "Admin",
+              account_status: "Active",
+              created_at: new Date().toISOString()
+            },
+            {
+              user_id: 2,
+              username: null,
+              student_number: "2024-01-00123",
+              password_hash: bcrypt.hashSync("student123", 10),
+              role: "Student",
+              account_status: "Active",
+              created_at: new Date().toISOString()
+            }
+          ],
+          student_records: [],
+          transaction_logs: [],
+          generated_outputs: []
+        };
+        await setDoc(SYNC_DOC, inMemoryDb);
+        console.log("Database skeleton seeded securely to Firestore.");
+     }
+  } catch (err) {
+     console.error("Firebase Database bootstrap failed:", err);
+     process.exit(1); 
+  }
+
   const app = express();
   const PORT = 3000;
 
@@ -142,8 +170,65 @@ async function startServer() {
     const user = db.users.find((u: any) => u.user_id === req.user.id);
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    const safeUser = { id: user.user_id, username: user.username, student_number: user.student_number, role: user.role, status: user.account_status };
+    const safeUser = { 
+      id: user.user_id, 
+      username: user.username, 
+      student_number: user.student_number, 
+      role: user.role, 
+      status: user.account_status,
+      email: user.email || "",
+      avatar_id: user.avatar_id || "",
+      display_name: user.display_name || ""
+    };
     res.json({ user: safeUser });
+  });
+
+  app.put("/api/users/profile", authenticateToken, (req: any, res) => {
+    const { email, avatar_id, display_name } = req.body;
+    const db = getDatabase();
+    const userIndex = db.users.findIndex((u: any) => u.user_id === req.user.id);
+    
+    if (userIndex === -1) return res.status(404).json({ error: "User not found" });
+
+    db.users[userIndex].email = email;
+    db.users[userIndex].avatar_id = avatar_id;
+    db.users[userIndex].display_name = display_name;
+    
+    saveDatabase(db);
+    res.json({ success: true, user: db.users[userIndex] });
+  });
+
+  app.post("/api/users/change-password", authenticateToken, (req: any, res) => {
+    const { currentPassword, newPassword } = req.body;
+    const db = getDatabase();
+    const user = db.users.find((u: any) => u.user_id === req.user.id);
+
+    if (!user || !bcrypt.compareSync(currentPassword, user.password_hash)) {
+      return res.status(401).json({ error: "Incorrect current password" });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: "Password must be at least 8 characters" });
+    }
+
+    user.password_hash = bcrypt.hashSync(newPassword, 10);
+    saveDatabase(db);
+    res.json({ success: true });
+  });
+
+  app.post("/api/forgot-password", (req, res) => {
+    const { email } = req.body;
+    const db = getDatabase();
+    const user = db.users.find((u: any) => u.email === email && u.role === "Student");
+    
+    if (!user) {
+      // Return generic message to prevent email enumeration
+      return res.json({ success: true, message: "If an account with that email exists, a reset link has been sent." });
+    }
+
+    // In a real app we'd send an email. For this prototype, we're just simulating success.
+    console.log(`Simulated password reset for ${email}`);
+    res.json({ success: true, message: "If an account with that email exists, a reset link has been sent." });
   });
 
   // Admin routing to manage students

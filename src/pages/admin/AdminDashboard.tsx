@@ -31,14 +31,14 @@ export default function AdminDashboard() {
   const [filteredResults, setFilteredResults] = useState<any[]>([]);
 
   const filterableFields = [
-    { key: "gender", label: "Gender" },
+    { key: "gender", label: "Gender", hasOptions: true },
     { key: "religion", label: "Religion" },
     { key: "annualfam_income", label: "Family Income", hint: "Income below or exact match" },
-    { key: "indigenous_group", label: "Indigenous Group" },
-    { key: "program", label: "Program" },
-    { key: "year_level", label: "Year Level" },
-    { key: "scholarship_status", label: "Scholarship" },
-    { key: "curr_province", label: "Province" }
+    { key: "indigenous_group", label: "Indigenous Group", hasOptions: true },
+    { key: "program", label: "Program", hasOptions: true },
+    { key: "year_level", label: "Year Level", hasOptions: true },
+    { key: "scholarship_status", label: "Scholarship", hasOptions: true },
+    { key: "curr_province", label: "Province", hasOptions: true }
   ];
 
   const handleAdvancedFilterSubmit = () => {
@@ -344,14 +344,27 @@ export default function AdminDashboard() {
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-gray-50 p-6 rounded-lg border border-border-color">
                       {filterableFields.filter(f => selectedFields.includes(f.key)).map(field => (
                         <div key={field.key}>
-                            <label className="block text-xs font-bold text-bu-blue uppercase mb-1">{field.label}</label>
-                            <input 
-                               type="text"
-                               placeholder={`Enter ${field.label.toLowerCase()}...`}
-                               value={filterData[field.key] || ""}
-                               onChange={(e) => setFilterData({...filterData, [field.key]: e.target.value})}
-                               className="w-full px-3 py-2 border border-border-color rounded focus:outline-none focus:border-bu-blue text-sm"
-                            />
+                           <label className="block text-xs font-bold text-bu-blue uppercase mb-1">{field.label}</label>
+                            {field.hasOptions ? (
+                               <select
+                                  value={filterData[field.key] || ""}
+                                  onChange={(e) => setFilterData({...filterData, [field.key]: e.target.value})}
+                                  className="w-full px-3 py-2 border border-border-color rounded focus:outline-none focus:border-bu-blue text-sm bg-white"
+                               >
+                                  <option value="">Any {field.label}</option>
+                                  {Array.from(new Set(forms.map(f => f[field.key]).filter(v => v !== undefined && v !== null && v !== "" && v !== "None"))).sort().map(opt => (
+                                      <option key={opt as string} value={opt as string}>{opt as string}</option>
+                                  ))}
+                               </select>
+                            ) : (
+                               <input 
+                                  type="text"
+                                  placeholder={`Enter ${field.label.toLowerCase()}...`}
+                                  value={filterData[field.key] || ""}
+                                  onChange={(e) => setFilterData({...filterData, [field.key]: e.target.value})}
+                                  className="w-full px-3 py-2 border border-border-color rounded focus:outline-none focus:border-bu-blue text-sm"
+                               />
+                            )}
                             {field.hint && <p className="text-[10px] text-text-muted mt-1">{field.hint}</p>}
                         </div>
                       ))}

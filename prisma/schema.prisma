@@ -1,0 +1,94 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            Int                  @id @default(autoincrement())
+  username      String?              @unique
+  email         String?              @unique
+  password_hash String
+  role          String               @default("admin") // "admin" or "super_admin"
+  created_at    DateTime             @default(now())
+}
+
+model Student {
+  id                Int                  @id @default(autoincrement())
+  student_number    String               @unique
+  password_hash     String   // Required for student logins (added to maintain parity)
+  first_name        String?
+  middle_name       String?
+  last_name         String?
+  sex               String?
+  birth_date        String?
+  citizenship       String?
+  enrollment_status String?
+  
+  profile           Profile?
+  addresses         Address[]
+  passwordResets    PasswordResetToken[]
+  
+  // These fields were part of student records forms. 
+  // For a robust system, we append them natively.
+  department         String?
+  program            String?
+  year_level         String?
+  block_section      String?
+  scholarship_status String?
+  religion           String?
+  contact_number     String?
+  cellphone_num      String?
+  annualfam_income   String?
+  height_cm          String?
+  weight_kg          String?
+  blood_type         String?
+  
+  created_at        DateTime             @default(now())
+  updated_at        DateTime             @updatedAt
+}
+
+model Profile {
+  id                  Int               @id @default(autoincrement())
+  student_id          Int               @unique
+  student             Student           @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  email               String?           @unique
+  display_name        String?
+  avatar_url          String?
+  indigenous_group_id Int?
+  indigenous_group    IndigenousGroup?  @relation(fields: [indigenous_group_id], references: [id])
+  indigenous_other    String?
+  has_disability      Boolean           @default(false)
+  disability_type     String?
+}
+
+model Address {
+  id           Int      @id @default(autoincrement())
+  student_id   Int
+  student      Student  @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  address_type String   // "current" or "permanent"
+  street       String?
+  barangay     String?
+  municipality String?
+  province     String?
+  zip_code     String?
+}
+
+model IndigenousGroup {
+  id         Int       @id @default(autoincrement())
+  group_name String    @unique
+  profiles   Profile[]
+}
+
+model PasswordResetToken {
+  id         Int      @id @default(autoincrement())
+  student_id Int
+  student    Student  @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  token      String   @unique
+  expires_at DateTime
+  created_at DateTime @default(now())
+}
+

@@ -1,0 +1,61 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A registered user (admin or student)",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string", "description": "Auth UID" },
+        "username": { "type": "string" },
+        "student_number": { "type": "string" },
+        "role": { "type": "string", "enum": ["Admin", "Student"] },
+        "account_status": { "type": "string" },
+        "email": { "type": "string" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["user_id", "role", "account_status"]
+    },
+    "StudentRecord": {
+      "title": "Student Record",
+      "description": "Student identity inventory form",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "student_number": { "type": "string" },
+        "first_name": { "type": "string" },
+        "last_name": { "type": "string" },
+        "department": { "type": "string" },
+        "program": { "type": "string" },
+        "year_level": { "type": "string" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["user_id", "student_number", "first_name", "last_name"]
+    },
+    "TransactionLog": {
+      "title": "Transaction Log",
+      "description": "Admin action log",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "action_type": { "type": "string" },
+        "action_timestamp": { "type": "string" },
+        "action_status": { "type": "string" }
+      },
+      "required": ["user_id", "action_type", "action_timestamp", "action_status"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Users collection"
+    },
+    "student_records/{recordId}": {
+      "schema": { "$ref": "#/entities/StudentRecord" },
+      "description": "Student forms collection"
+    },
+    "transaction_logs/{logId}": {
+      "schema": { "$ref": "#/entities/TransactionLog" },
+      "description": "Audit logs for admin actions"
+    }
+  }
+}
