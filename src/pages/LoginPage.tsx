@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, GraduationCap } from "lucide-react";
 
 export default function LoginPage() {
   const [searchParams] = useSearchParams();
@@ -67,16 +67,19 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-light-bg flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans text-text-main">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
+      <div className="sm:mx-auto sm:w-full sm:max-w-md flex flex-col items-center">
         <Link to="/" className="flex items-center text-bu-blue hover:text-bu-orange mb-6 justify-center font-semibold transition">
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Home
         </Link>
-        <h2 className="mt-6 text-center text-3xl font-extrabold text-text-main">
-          {role === "admin" ? "Admin System Login" : "Student Login"}
+        <div className="w-16 h-16 bg-bu-orange rounded-full flex items-center justify-center font-bold text-white shadow-lg mb-4">
+          <GraduationCap className="w-8 h-8" />
+        </div>
+        <h2 className="mt-2 text-center text-3xl font-extrabold text-text-main">
+          Sign in to your account
         </h2>
         <p className="mt-2 text-center text-sm text-text-muted font-medium">
-          Sign in to your CSIIFS account
+          {role === "admin" ? "Admin System Login" : "Student Portal Login"}
         </p>
       </div>
 

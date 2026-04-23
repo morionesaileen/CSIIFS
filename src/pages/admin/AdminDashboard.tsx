@@ -2,11 +2,16 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { LogOut, Users, FileText, Trash2, UserPlus, Activity, Search, Filter, X, Eye } from "lucide-react";
+import ChatbotWidget from "../../components/ChatbotWidget";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
+import PrintableStudentRecord from "../../components/PrintableStudentRecord";
 
 const AddressDisplay = ({ record, prefix }: { record: any, prefix: 'curr_' | 'perm_' }) => {
-  if (record[`${prefix}province`]) {
+  if (record[`${prefix}region`]) {
     const street = record[`${prefix}street`] ? record[`${prefix}street`] + ', ' : '';
-    return <span>{street}{record[`${prefix}barangay`]}, {record[`${prefix}municipality`]}, {record[`${prefix}province`]}</span>;
+    const prov = record[`${prefix}province`] ? record[`${prefix}province`] + ', ' : '';
+    return <span>{street}{record[`${prefix}barangay`]}, {record[`${prefix}municipality`]}, {prov}{record[`${prefix}region`]}</span>;
   }
   return <span>{prefix === 'curr_' ? record.current_address : record.permanent_address} || 'N/A'</span>;
 };
@@ -37,6 +42,7 @@ export default function AdminDashboard() {
     { key: "indigenous_group", label: "Indigenous Group", hasOptions: true },
     { key: "program", label: "Program", hasOptions: true },
     { key: "year_level", label: "Year Level", hasOptions: true },
+    { key: "block_section", label: "Block/Section", hasOptions: true },
     { key: "scholarship_status", label: "Scholarship", hasOptions: true },
     { key: "curr_province", label: "Province", hasOptions: true }
   ];
@@ -64,7 +70,8 @@ export default function AdminDashboard() {
     });
 
     results.sort((a, b) => {
-      if (a.year_level !== b.year_level) return String(a.year_level).localeCompare(String(b.year_level));
+      if (a.year_level !== b.year_level) return String(a.year_level || '').localeCompare(String(b.year_level || ''));
+      if (a.block_section !== b.block_section) return String(a.block_section || '').localeCompare(String(b.block_section || ''));
       const nameA = `${a.last_name} ${a.first_name} ${a.middle_name}`.toLowerCase();
       const nameB = `${b.last_name} ${b.first_name} ${b.middle_name}`.toLowerCase();
       return nameA.localeCompare(nameB);
@@ -83,6 +90,67 @@ export default function AdminDashboard() {
       const diffTimestamp = Date.now() - new Date(dob).getTime();
       const ageDate = new Date(diffTimestamp);
       return Math.abs(ageDate.getUTCFullYear() - 1970);
+  };
+
+  const handleExportCSV = (data: any[], filename: string) => {
+    if(!data.length) return;
+    const keys = Object.keys(data[0]).filter(k => !['_id', '__v', 'password', 'avatar_id', 'user_id', 'id'].includes(k));
+    const csvContent = [
+      keys.join(','),
+      ...data.map(row => keys.map(k => `"${String(row[k] || '').replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute('download', `${filename}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handlePrint = () => {
+    // Show the printable layout specifically for print
+    const element = document.getElementById("printable-record-container");
+    if (element) {
+        element.classList.remove('hidden');
+        element.classList.add('block');
+    }
+    window.print();
+    if (element) {
+        element.classList.add('hidden');
+        element.classList.remove('block');
+    }
+  };
+
+  const handleDownloadPDF = async () => {
+    // Find the dedicated printable container
+    const element = document.getElementById("printable-record-container");
+    if (!element) return;
+    
+    // Temporarily make it visible for html2canvas
+    const originalDisplay = element.style.display;
+    element.style.display = "block";
+    element.style.position = "absolute";
+    element.style.left = "-9999px"; // move offscreen so user doesn't see flash
+    
+    try {
+      const canvas = await html2canvas(element, { scale: 2 });
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF("p", "mm", "a4");
+      
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      
+      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+      pdf.save(`Student_Record_${selectedRecord?.student_number || 'export'}.pdf`);
+    } catch(err) {
+      console.error("PDF generation failed", err);
+    } finally {
+      // Revert display back to original state
+      element.style.display = originalDisplay;
+      element.style.position = "";
+      element.style.left = "";
+    }
   };
 
   const handleLogout = () => { logout(); navigate("/"); };
@@ -132,10 +200,21 @@ export default function AdminDashboard() {
   };
 
   const handleDeleteStudent = async (id: string) => {
-    if (!confirm("Remove this student completely?")) return;
     try {
       const res = await fetch(`/api/admin/students/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) fetchStudents();
+    } catch (err) {}
+  };
+
+  const handleDeleteRecord = async (e: React.MouseEvent, record: any) => {
+    e.stopPropagation();
+    try {
+      const res = await fetch(`/api/admin/records/${record.user_id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        setFilteredResults(prev => prev.filter(r => r.user_id !== record.user_id));
+        fetchForms();
+        fetchStudents();
+      }
     } catch (err) {}
   };
 
@@ -144,14 +223,16 @@ export default function AdminDashboard() {
       <header className="bg-bu-blue text-white px-4 sm:px-8 py-4 flex flex-col sm:flex-row justify-between items-center gap-4 border-b-4 border-bu-orange">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-bu-orange rounded-full flex items-center justify-center font-bold">BU</div>
-          <div><h1 className="text-lg font-bold m-0 text-center sm:text-left">CSIIFS Admin Dashboard</h1></div>
+          <div><h1 className="text-lg font-bold m-0 text-center sm:text-left">Admin Dashboard</h1></div>
         </div>
         <div className="flex flex-col items-center sm:items-end text-sm">
           <div className="mb-1">
             <span className="bg-bu-orange px-2 py-0.5 rounded font-bold uppercase text-[10px] mr-2">System Admin</span>
             <strong className="tracking-wide">{user?.username}</strong>
           </div>
-          <button onClick={handleLogout} className="flex items-center text-gray-300 hover:text-bu-orange text-xs mt-1 transition-colors"><LogOut className="w-3 h-3 mr-1" /> Sign out securely</button>
+          <div className="flex gap-4">
+             <button onClick={handleLogout} className="flex items-center text-gray-300 hover:text-bu-orange text-xs mt-1 transition-colors"><LogOut className="w-3 h-3 mr-1" /> Sign out securely</button>
+          </div>
         </div>
       </header>
 
@@ -175,7 +256,7 @@ export default function AdminDashboard() {
 
         <div className="bg-card-white rounded-xl border border-border-color p-5 shadow-sm col-span-2">
           <div className="text-xs font-bold text-bu-blue uppercase mb-3">System Information</div>
-          <p className="text-sm text-text-muted mt-2">CSIIFS Polangui Campus Admin Panel. Auto-backup is enabled.</p>
+          <p className="text-sm text-text-muted mt-2">Bicol University Polangui Campus Admin Panel. Auto-backup is enabled.</p>
           <p className="text-xs text-text-muted mt-2">Students register their own accounts via the public portal.</p>
         </div>
 
@@ -383,7 +464,9 @@ export default function AdminDashboard() {
                         <h3 className="font-bold text-bu-orange">Filtered Results</h3>
                         <p className="text-xs text-text-muted font-medium">{filteredResults.length} students matched your criteria.</p>
                       </div>
-                      <button onClick={() => setFilterStep(1)} className="px-4 py-1.5 rounded font-bold text-xs border border-bu-blue text-bu-blue hover:bg-bu-blue hover:text-white transition-colors">Reset Filter</button>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => setFilterStep(1)} className="px-4 py-1.5 rounded font-bold text-xs border border-bu-blue text-bu-blue hover:bg-bu-blue hover:text-white transition-colors">Reset Filter</button>
+                      </div>
                    </div>
 
                    <div className="w-full overflow-hidden border border-border-color rounded-lg">
@@ -392,7 +475,7 @@ export default function AdminDashboard() {
                               <tr>
                                   <th className="py-3 px-4 font-semibold whitespace-nowrap">Student No.</th>
                                   <th className="py-3 px-4 font-semibold whitespace-nowrap">Name (Alphabetical)</th>
-                                  <th className="py-3 px-4 font-semibold whitespace-nowrap text-center">Yr. Level</th>
+                                  <th className="py-3 px-4 font-semibold whitespace-nowrap text-center">Yr. & Block</th>
                                   <th className="py-3 px-4 font-semibold text-right">Action</th>
                               </tr>
                           </thead>
@@ -401,10 +484,13 @@ export default function AdminDashboard() {
                                 <tr key={f.user_id} className="border-b last:border-b-0 cursor-pointer hover:bg-bu-blue/5 transition" onClick={() => setSelectedRecord(f)}>
                                   <td className="py-3 px-4 font-bold text-bu-blue whitespace-nowrap">{f.student_number}</td>
                                   <td className="py-3 px-4 font-semibold text-text-main whitespace-nowrap">{f.last_name}, {f.first_name} {f.middle_name}</td>
-                                  <td className="py-3 px-4 whitespace-nowrap text-center font-bold text-bu-orange">{f.year_level}</td>
+                                  <td className="py-3 px-4 whitespace-nowrap text-center font-bold text-bu-orange">{f.year_level} - {f.block_section}</td>
                                   <td className="py-3 px-4 text-right">
-                                     <button className="text-text-muted hover:text-bu-orange font-bold text-[10px] sm:text-xs inline-flex items-center tracking-wide">
+                                     <button className="text-text-muted hover:text-bu-orange font-bold text-[10px] sm:text-xs inline-flex items-center tracking-wide mr-3">
                                        <Eye className="w-4 h-4 mr-1"/> VIEW
+                                     </button>
+                                     <button onClick={(e) => handleDeleteRecord(e, f)} className="text-gray-400 hover:text-red-600 font-bold text-[10px] sm:text-xs inline-flex items-center tracking-wide">
+                                       <Trash2 className="w-4 h-4 mr-1"/> DEL
                                      </button>
                                   </td>
                                 </tr>
@@ -456,17 +542,21 @@ export default function AdminDashboard() {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
            <div className="bg-light-bg w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl relative border-t-8 border-t-bu-orange animate-in fade-in zoom-in duration-200">
               
-              <div className="sticky top-0 bg-light-bg pt-6 pb-4 px-8 flex justify-between items-center border-b border-border-color z-10">
+              <div className="sticky top-0 bg-light-bg pt-6 pb-4 px-8 flex justify-between items-center border-b border-border-color z-10 no-print">
                  <div>
                     <h2 className="text-2xl font-extrabold text-text-main m-0">Student Record</h2>
                     <p className="text-sm text-text-muted font-medium mt-1">Submitted on {new Date(selectedRecord.submittedAt).toLocaleDateString()}</p>
                  </div>
-                 <button onClick={() => setSelectedRecord(null)} className="bg-card-white border border-border-color hover:bg-gray-100 hover:text-red-500 rounded-full p-2 transition">
-                   <X className="w-5 h-5"/>
-                 </button>
+                 <div className="flex gap-3 items-center no-print">
+                    <button onClick={handlePrint} className="px-4 py-2 bg-gray-600 text-white text-xs font-bold rounded hover:bg-gray-700 transition">Print</button>
+                    <button onClick={handleDownloadPDF} className="px-4 py-2 bg-bu-orange text-white text-xs font-bold rounded hover:bg-orange-600 transition">Download PDF</button>
+                    <button onClick={() => setSelectedRecord(null)} className="bg-card-white border border-border-color hover:bg-gray-100 hover:text-red-500 rounded-full p-2 transition ml-2">
+                       <X className="w-5 h-5"/>
+                    </button>
+                 </div>
               </div>
 
-              <div className="p-8 space-y-8">
+              <div id="student-record-content" className="p-8 space-y-8 bg-light-bg rounded-b-2xl">
                  {/* Personal Info */}
                  <div className="bg-white p-6 rounded-xl border border-border-color shadow-sm relative group">
                     <h3 className="font-extrabold tracking-wide text-bu-blue border-b pb-3 mb-5 uppercase text-sm flex items-center"><Users className="w-4 h-4 mr-2 text-bu-orange"/> Personal Information</h3>
@@ -526,6 +616,13 @@ export default function AdminDashboard() {
            </div>
         </div>
       )}
+
+      {/* Hidden Container exclusively for PDF generation and Standard Window Printing */}
+      <div id="printable-record-container" className="hidden print-modal no-print absolute bg-white z-[9999]">
+          {selectedRecord && <PrintableStudentRecord record={selectedRecord} />}
+      </div>
+
+      <ChatbotWidget />
     </div>
   );
 }

@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
-import { LogOut, FileText, History, CheckCircle, Settings, User as UserIcon } from "lucide-react";
+import { LogOut, FileText, History, CheckCircle, Settings, User as UserIcon, X } from "lucide-react";
+import AddressSelector from "../../components/AddressSelector";
+import { nationalities } from "../../data/nationalities";
+import { religions } from "../../data/religions";
 
 const AVATARS = [
   "https://api.dicebear.com/7.x/bottts/svg?seed=Felix",
@@ -13,9 +16,10 @@ const AVATARS = [
 ];
 
 const AddressDisplay = ({ record, prefix }: { record: any, prefix: 'curr_' | 'perm_' }) => {
-  if (record[`${prefix}province`]) {
+  if (record[`${prefix}region`]) {
     const street = record[`${prefix}street`] ? record[`${prefix}street`] + ', ' : '';
-    return <span>{street}{record[`${prefix}barangay`]}, {record[`${prefix}municipality`]}, {record[`${prefix}province`]}</span>;
+    const prov = record[`${prefix}province`] ? record[`${prefix}province`] + ', ' : '';
+    return <span>{street}{record[`${prefix}barangay`]}, {record[`${prefix}municipality`]}, {prov}{record[`${prefix}region`]}</span>;
   }
   return <span>{prefix === 'curr_' ? record.current_address : record.permanent_address} || 'N/A'</span>;
 };
@@ -67,22 +71,6 @@ const departmentsData: Record<string, string[]> = {
   ]
 };
 
-const philippineData: Record<string, Record<string, string[]>> = {
-  "Albay": {
-    "Daraga": ["Alcala", "Alobo", "Anislag", "Bañag", "Bagumbayan", "Bigaa", "Busay", "Cullat", "Gapo", "Iñigo", "Kimantong", "Poblacion", "Tagas"],
-    "Legazpi City": ["Bitano", "Bogtong", "Cruzada", "Sagpon", "San Roque", "Rawis", "Washington", "Puro"],
-    "Polangui": ["Agos", "Basud", "Centro Occidental", "Centro Oriental", "Magpanambo", "Napoli", "Sugcad"],
-    "Tabaco City": ["Agnas", "Bangkilingan", "Divino Rostro", "Fatima", "Poblacion"]
-  },
-  "Camarines Sur": {
-    "Naga City": ["Concepcion Grande", "Concepcion Pequeña", "Dayangdang", "San Felipe", "Triangulo"],
-    "Pili": ["Cadlan", "Curry", "San Agustin", "San Jose", "Santiago"]
-  },
-  "Sorsogon": {
-    "Sorsogon City": ["Abuyog", "Almendra", "Balogo", "Piot", "Polvorista"]
-  }
-};
-
 export default function StudentDashboard() {
   const { user, token, logout, updateUser } = useAuth();
   const navigate = useNavigate();
@@ -125,15 +113,41 @@ export default function StudentDashboard() {
     first_name: "", middle_name: "", last_name: "", sex: "", birth_date: "",
     citizenship: "", religion: "", contact_number: "", email_address: "",
     current_address: "", permanent_address: "", cellphone_num: "",
-    curr_province: "", curr_municipality: "", curr_barangay: "", curr_street: "", curr_zipcode: "",
-    perm_province: "", perm_municipality: "", perm_barangay: "", perm_street: "", perm_zipcode: "",
+    curr_region: "", curr_region_code: "", curr_province: "", curr_province_code: "", curr_municipality: "", curr_municipality_code: "", curr_barangay: "", curr_barangay_code: "", curr_street: "", curr_zipcode: "",
+    perm_region: "", perm_region_code: "", perm_province: "", perm_province_code: "", perm_municipality: "", perm_municipality_code: "", perm_barangay: "", perm_barangay_code: "", perm_street: "", perm_zipcode: "",
     annualfam_income: "", indigenous_group: "",
     department: "", program: "", year_level: "", block_section: "",
-    enrollment_status: "", scholarship_status: "None",
+    enrollment_status: "", has_scholarship: "No", scholarship_status: "",
     height_cm: "", weight_kg: "", blood_type: "", disability_status: "", has_disability: "No"
   };
   
   const [formData, setFormData] = useState(emptyForm);
+  const [sameAsCurrent, setSameAsCurrent] = useState(false);
+
+  useEffect(() => {
+    if (sameAsCurrent) {
+        setFormData(prev => ({
+            ...prev,
+            perm_region: prev.curr_region,
+            perm_region_code: prev.curr_region_code,
+            perm_province: prev.curr_province,
+            perm_province_code: prev.curr_province_code,
+            perm_municipality: prev.curr_municipality,
+            perm_municipality_code: prev.curr_municipality_code,
+            perm_barangay: prev.curr_barangay,
+            perm_barangay_code: prev.curr_barangay_code,
+            perm_street: prev.curr_street,
+            perm_zipcode: prev.curr_zipcode
+        }));
+    }
+  }, [
+    sameAsCurrent,
+    formData.curr_region, formData.curr_region_code,
+    formData.curr_province, formData.curr_province_code,
+    formData.curr_municipality, formData.curr_municipality_code,
+    formData.curr_barangay, formData.curr_barangay_code,
+    formData.curr_street, formData.curr_zipcode
+  ]);
 
   const calculateAge = (dob: string) => {
       if (!dob) return "";
@@ -253,7 +267,7 @@ export default function StudentDashboard() {
           </div>
         </div>
         <div className="flex flex-col items-center sm:items-end text-sm w-full sm:w-auto mt-2 sm:mt-0">
-          <h1 className="text-lg font-bold text-center sm:text-right">CSIIFS Student Portal</h1>
+          <h1 className="text-lg font-bold text-center sm:text-right">Student Portal</h1>
           <div className="sm:hidden mt-2">
             <span className="font-semibold px-3 py-1 bg-white/10 rounded-full">Student No: {user?.student_number}</span>
           </div>
@@ -292,51 +306,50 @@ export default function StudentDashboard() {
                        
                        <div>
                           <label className="block text-[0.8rem] text-text-muted mb-1 font-semibold">Citizenship</label>
-                          <input 
-                              type="text" 
-                              list="citizenship-options"
+                          <select 
                               value={formData.citizenship} 
                               onChange={e => setFormData({...formData, citizenship: e.target.value})} 
-                              className="w-full px-3 py-2 border border-border-color rounded focus:outline-none focus:border-bu-blue text-sm bg-white" 
-                              placeholder="Filipino" 
-                          />
-                          <datalist id="citizenship-options">
-                              <option value="Filipino" />
-                              <option value="American" />
-                              <option value="Chinese" />
-                              <option value="Japanese" />
-                          </datalist>
+                              className="w-full px-3 py-2 border border-border-color rounded focus:outline-none focus:border-bu-blue text-sm bg-white"
+                          >
+                              <option value="">Select Citizenship...</option>
+                              {nationalities.map(n => <option key={n} value={n}>{n}</option>)}
+                          </select>
                        </div>
                        
                        <div>
                          <label className="block text-[0.8rem] text-text-muted mb-1 font-semibold">Religion</label>
-                         <input 
-                             type="text" 
-                             list="religion-options"
+                         <select 
                              value={formData.religion} 
                              onChange={e => setFormData({...formData, religion: e.target.value})} 
-                             className="w-full px-3 py-2 border border-border-color rounded focus:outline-none focus:border-bu-blue text-sm bg-white" 
-                             placeholder="Select or specify..." 
-                         />
-                         <datalist id="religion-options">
-                             <option value="Roman Catholic" />
-                             <option value="Islam" />
-                             <option value="Iglesia ni Cristo (INC)" />
-                             <option value="Seventh-day Adventist" />
-                             <option value="Aglipay (Philippine Independent Church)" />
-                             <option value="Iglesia Filipina Independiente" />
-                             <option value="Bible Baptist Church" />
-                             <option value="United Church of Christ in the Philippines" />
-                             <option value="Jehovah's Witnesses" />
-                             <option value="Church of Christ" />
-                         </datalist>
-                         <p className="text-[10px] text-text-muted mt-1 leading-tight">If your religion wasn't mentioned, please specify.</p>
+                             className="w-full px-3 py-2 border border-border-color rounded focus:outline-none focus:border-bu-blue text-sm bg-white"
+                         >
+                             <option value="">Select Religion...</option>
+                             {religions.map(r => <option key={r} value={r}>{r}</option>)}
+                         </select>
                        </div>
 
                        <InputField label="Contact Number" keyName="contact_number" required formData={formData} setFormData={setFormData} />
                        <InputField label="Email Address" keyName="email_address" type="email" required formData={formData} setFormData={setFormData} />
                        <InputField label="Active Cellphone No." keyName="cellphone_num" required formData={formData} setFormData={setFormData} />
-                       <InputField label="Annual Income" keyName="annualfam_income" type="number" formData={formData} setFormData={setFormData} />
+                       
+                       <div>
+                         <label className="block text-[0.8rem] text-text-muted mb-1 font-semibold">Annual Income</label>
+                         <div className="relative">
+                           <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-500 font-semibold">₱</span>
+                           <input 
+                               type="text" 
+                               inputMode="numeric"
+                               pattern="[0-9]*"
+                               value={formData.annualfam_income} 
+                               onChange={(e) => {
+                                 const val = e.target.value.replace(/\D/g, "");
+                                 setFormData({ ...formData, annualfam_income: val });
+                               }} 
+                               className="w-full pl-8 pr-3 py-2 border border-border-color rounded focus:outline-none focus:border-bu-blue text-sm bg-white" 
+                               placeholder="150000" 
+                           />
+                         </div>
+                       </div>
                        
                        <div>
                           <label className="block text-[0.8rem] text-text-muted mb-1 font-semibold">Indigenous Group</label>
@@ -362,36 +375,8 @@ export default function StudentDashboard() {
                    
                    <div className="mt-8">
                      <h3 className="font-bold text-sm mb-3 text-bu-orange uppercase tracking-wide">Current Address</h3>
-                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
-                        <div>
-                          <label className="block text-[0.8rem] text-text-muted mb-1 font-semibold">Province *</label>
-                          <select required value={formData.curr_province} onChange={e => setFormData({...formData, curr_province: e.target.value, curr_municipality: "", curr_barangay: ""})} className="w-full px-3 py-2 border border-border-color rounded focus:outline-none focus:border-bu-blue text-sm bg-white">
-                              <option value="">Select</option>
-                              {Object.keys(philippineData).map(p => <option key={p} value={p}>{p}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-[0.8rem] text-text-muted mb-1 font-semibold">City/Mun. *</label>
-                          <select required disabled={!formData.curr_province} value={formData.curr_municipality} onChange={e => setFormData({...formData, curr_municipality: e.target.value, curr_barangay: ""})} className="w-full px-3 py-2 border border-border-color rounded focus:outline-none focus:border-bu-blue text-sm bg-white disabled:bg-gray-100">
-                              <option value="">Select</option>
-                              {formData.curr_province && Object.keys(philippineData[formData.curr_province] || {}).map(m => <option key={m} value={m}>{m}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-[0.8rem] text-text-muted mb-1 font-semibold">Barangay *</label>
-                          <select required disabled={!formData.curr_municipality} value={formData.curr_barangay} onChange={e => setFormData({...formData, curr_barangay: e.target.value})} className="w-full px-3 py-2 border border-border-color rounded focus:outline-none focus:border-bu-blue text-sm bg-white disabled:bg-gray-100">
-                              <option value="">Select</option>
-                              {formData.curr_municipality && philippineData[formData.curr_province]?.[formData.curr_municipality]?.map(b => <option key={b} value={b}>{b}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-[0.8rem] text-text-muted mb-1 font-semibold">Block / Street</label>
-                          <input type="text" value={formData.curr_street} onChange={e => setFormData({...formData, curr_street: e.target.value})} placeholder="Blk 1 Lot 2" className="w-full px-3 py-2 border border-border-color rounded focus:outline-none focus:border-bu-blue text-sm bg-white"/>
-                        </div>
-                        <div>
-                           <label className="block text-[0.8rem] text-text-muted mb-1 font-semibold">ZIP Code</label>
-                           <input type="text" value={formData.curr_zipcode} onChange={e => setFormData({...formData, curr_zipcode: e.target.value})} placeholder="4500" className="w-full px-3 py-2 border border-border-color rounded focus:outline-none focus:border-bu-blue text-sm bg-white" />
-                        </div>
+                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-4 items-start">
+                        <AddressSelector prefix="curr" formData={formData} setFormData={setFormData} />
                      </div>
                    </div>
 
@@ -399,38 +384,12 @@ export default function StudentDashboard() {
                      <div className="flex items-center justify-between mb-3 border-b border-border-color pb-2">
                        <h3 className="font-bold text-sm text-bu-orange uppercase tracking-wide">Permanent Address</h3>
                        <label className="flex items-center text-xs font-semibold cursor-pointer text-bu-blue hover:text-bu-orange transition">
-                         <input type="checkbox" className="mr-2 cursor-pointer" onChange={(e) => {
-                           if(e.target.checked) setFormData({...formData, perm_province: formData.curr_province, perm_municipality: formData.curr_municipality, perm_barangay: formData.curr_barangay, perm_street: formData.curr_street});
-                         }}/>
+                         <input type="checkbox" className="mr-2 cursor-pointer" checked={sameAsCurrent} onChange={(e) => setSameAsCurrent(e.target.checked)}/>
                          Same as Current
                        </label>
                      </div>
-                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                        <div>
-                          <label className="block text-[0.8rem] text-text-muted mb-1 font-semibold">Province *</label>
-                          <select required value={formData.perm_province} onChange={e => setFormData({...formData, perm_province: e.target.value, perm_municipality: "", perm_barangay: ""})} className="w-full px-3 py-2 border border-border-color rounded focus:outline-none focus:border-bu-blue text-sm bg-white">
-                              <option value="">Select Province</option>
-                              {Object.keys(philippineData).map(p => <option key={p} value={p}>{p}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-[0.8rem] text-text-muted mb-1 font-semibold">Municipality/City *</label>
-                          <select required disabled={!formData.perm_province} value={formData.perm_municipality} onChange={e => setFormData({...formData, perm_municipality: e.target.value, perm_barangay: ""})} className="w-full px-3 py-2 border border-border-color rounded focus:outline-none focus:border-bu-blue text-sm bg-white disabled:bg-gray-100">
-                              <option value="">Select Municipality</option>
-                              {formData.perm_province && Object.keys(philippineData[formData.perm_province] || {}).map(m => <option key={m} value={m}>{m}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-[0.8rem] text-text-muted mb-1 font-semibold">Barangay *</label>
-                          <select required disabled={!formData.perm_municipality} value={formData.perm_barangay} onChange={e => setFormData({...formData, perm_barangay: e.target.value})} className="w-full px-3 py-2 border border-border-color rounded focus:outline-none focus:border-bu-blue text-sm bg-white disabled:bg-gray-100">
-                              <option value="">Select Barangay</option>
-                              {formData.perm_municipality && philippineData[formData.perm_province]?.[formData.perm_municipality]?.map(b => <option key={b} value={b}>{b}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-[0.8rem] text-text-muted mb-1 font-semibold">House No. / Street</label>
-                          <input type="text" value={formData.perm_street} onChange={e => setFormData({...formData, perm_street: e.target.value})} placeholder="Blk 1 Lot 2" className="w-full px-3 py-2 border border-border-color rounded focus:outline-none focus:border-bu-blue text-sm bg-white"/>
-                        </div>
+                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-4 items-start">
+                        <AddressSelector prefix="perm" formData={formData} setFormData={setFormData} disabled={sameAsCurrent} />
                      </div>
                    </div>
                 </div>
@@ -466,18 +425,38 @@ export default function StudentDashboard() {
                              <option value="4th Year">4th Year</option>
                            </select>
                         </div>
-                        <InputField label="Block/Section" keyName="block_section" required formData={formData} setFormData={setFormData} />
+                        <div>
+                           <label className="block text-xs font-bold text-text-muted mb-1">Block / Section *</label>
+                           <select required value={formData.block_section} onChange={e=>setFormData({...formData, block_section: e.target.value})} className="w-full px-3 py-2 border border-border-color rounded focus:outline-none focus:border-bu-blue text-sm bg-white">
+                             <option value="">Select Block</option>
+                             <option value="A">A</option>
+                             <option value="B">B</option>
+                             <option value="C">C</option>
+                             <option value="D">D</option>
+                             <option value="E">E</option>
+                           </select>
+                        </div>
                        <div>
                           <label className="block text-xs font-bold text-text-muted mb-1">Enrollment Status *</label>
                           <select required value={formData.enrollment_status} onChange={e => setFormData({...formData, enrollment_status: e.target.value})} className="w-full px-3 py-2 border rounded text-sm bg-white">
                               <option value="">Select</option><option value="Regular">Regular</option><option value="Irregular">Irregular</option>
                           </select>
                        </div>
-                       <div>
-                          <label className="block text-xs font-bold text-text-muted mb-1">Scholarship</label>
-                          <select value={formData.scholarship_status} onChange={e => setFormData({...formData, scholarship_status: e.target.value})} className="w-full px-3 py-2 border rounded text-sm bg-white">
-                              <option value="None">None</option><option value="Full Scholar">Full Scholar</option>
-                          </select>
+                       <div className="sm:col-span-2">
+                          <label className="block text-xs font-bold text-text-muted mb-2">Do you have a scholarship?</label>
+                          <div className="flex items-center gap-4 mb-2">
+                             <label className="flex items-center text-sm font-semibold cursor-pointer">
+                               <input type="radio" name="scholarship" value="Yes" checked={formData.has_scholarship === "Yes"} onChange={e => setFormData({...formData, has_scholarship: "Yes"})} className="mr-2" />
+                               Yes
+                             </label>
+                             <label className="flex items-center text-sm font-semibold cursor-pointer">
+                               <input type="radio" name="scholarship" value="No" checked={formData.has_scholarship === "No"} onChange={e => setFormData({...formData, has_scholarship: "No", scholarship_status: ""})} className="mr-2" />
+                               No
+                             </label>
+                          </div>
+                          {formData.has_scholarship === "Yes" && (
+                            <input type="text" required value={formData.scholarship_status} onChange={e => setFormData({...formData, scholarship_status: e.target.value})} placeholder="Specify Scholarship..." className="w-full px-3 py-2 border rounded text-sm bg-white focus:outline-none focus:border-bu-blue" />
+                          )}
                        </div>
                    </div>
                 </div>
@@ -616,7 +595,11 @@ export default function StudentDashboard() {
                            </dl>
                            <dl>
                              <dt className="text-text-muted text-[10px] uppercase font-bold tracking-wider">Scholarship</dt>
-                             <dd className="font-semibold">{historicalData.scholarship_status || 'None'}</dd>
+                             <dd className="font-semibold">
+                               {historicalData.has_scholarship === 'Yes' 
+                                  ? `Yes (${historicalData.scholarship_status || 'Specified'})` 
+                                  : 'None'}
+                             </dd>
                            </dl>
                        </div>
                     </div>
@@ -660,9 +643,9 @@ export default function StudentDashboard() {
                  <h2 className="font-bold text-bu-blue uppercase tracking-wide">
                     {profileModal === "profile" ? "Complete Your Profile" : "Account Settings"}
                  </h2>
-                 {user?.email && (
-                   <button onClick={() => setProfileModal(null)} className="text-gray-400 hover:text-gray-700 font-bold">&times;</button>
-                 )}
+                 <button onClick={() => setProfileModal(null)} className="text-gray-400 hover:text-gray-700 font-bold flex items-center justify-center w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300">
+                   <X className="w-5 h-5"/>
+                 </button>
               </div>
               
               <div className="p-6 max-h-[80vh] overflow-y-auto custom-scrollbar">

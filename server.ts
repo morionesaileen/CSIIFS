@@ -16,7 +16,7 @@ const firebaseConfigStr = fs.readFileSync(path.join(process.cwd(), "firebase-app
 const firebaseConfig = JSON.parse(firebaseConfigStr);
 const firebaseApp = initializeApp(firebaseConfig);
 const dbStore = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
-const SYNC_DOC = doc(dbStore, "server_sync", "csiifs_system_data");
+const SYNC_DOC = doc(dbStore, "server_sync", "bu_system_data");
 
 let inMemoryDb: any = null;
 
@@ -319,6 +319,27 @@ async function startServer() {
     const db = getDatabase();
     const myForms = db.student_records.filter((f: any) => f.user_id === req.user.id);
     res.json(myForms);
+  });
+
+  app.delete("/api/admin/records/:userId", authenticateToken, (req: any, res) => {
+    if (req.user.role !== "Admin") return res.sendStatus(403);
+    const db = getDatabase();
+    
+    // Delete from student_records
+    const recordIndex = db.student_records.findIndex((r: any) => r.user_id === parseInt(req.params.userId));
+    if (recordIndex !== -1) {
+       db.student_records.splice(recordIndex, 1);
+    }
+    
+    // Also delete user account
+    const userIndex = db.users.findIndex((u: any) => u.user_id === parseInt(req.params.userId));
+    if (userIndex !== -1) {
+       db.users.splice(userIndex, 1);
+    }
+
+    logAdminAction(db, req.user.id, "Delete Record", "Success");
+    saveDatabase(db);
+    res.json({ success: true });
   });
 
   // Admin routing to view all forms
