@@ -94,7 +94,7 @@ export default function PrintableStudentRecord({ record, id }: PrintableStudentR
           </tr>
           <tr>
             <td className="border border-black p-2 font-bold bg-gray-50">Annual Income</td>
-            <td className="border border-black p-2">PHP {record.annualfam_income || '0'}</td>
+            <td className="border border-black p-2">{record.annualfam_income || 'N/A'}</td>
             <td className="border border-black p-2 font-bold bg-gray-50">Indigenous Group</td>
             <td className="border border-black p-2">{record.indigenous_group || 'None'}</td>
           </tr>

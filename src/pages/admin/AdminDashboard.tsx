@@ -38,7 +38,7 @@ export default function AdminDashboard() {
   const filterableFields = [
     { key: "gender", label: "Gender", hasOptions: true },
     { key: "religion", label: "Religion" },
-    { key: "annualfam_income", label: "Family Income", hint: "Income below or exact match" },
+    { key: "annualfam_income", label: "Family Income", hasOptions: true },
     { key: "indigenous_group", label: "Indigenous Group", hasOptions: true },
     { key: "program", label: "Program", hasOptions: true },
     { key: "year_level", label: "Year Level", hasOptions: true },
@@ -55,9 +55,7 @@ export default function AdminDashboard() {
         const searchVal = filterData[key].toLowerCase();
         
         if (key === "annualfam_income") {
-           const maxIncome = Number(filterData[key].replace(/[^0-9]/g, ''));
-           const studentIncome = Number(f[key] || 0);
-           if (studentIncome > maxIncome) matches = false;
+           if(String(f[key] || "") !== filterData[key]) matches = false;
         } else if (key === "scholarship_status" || key === "indigenous_group") {
             const studentVal = String(f[key] || "None").toLowerCase();
             if(!studentVal.includes(searchVal)) matches = false;
@@ -115,11 +113,17 @@ export default function AdminDashboard() {
         element.classList.remove('hidden');
         element.classList.add('block');
     }
-    window.print();
-    if (element) {
-        element.classList.add('hidden');
-        element.classList.remove('block');
-    }
+    
+    // Slight delay to ensure DOM is updated before print dialog
+    setTimeout(() => {
+        window.print();
+        setTimeout(() => {
+            if (element) {
+                element.classList.add('hidden');
+                element.classList.remove('block');
+            }
+        }, 500);
+    }, 50);
   };
 
   const handleDownloadPDF = async () => {
@@ -244,20 +248,14 @@ export default function AdminDashboard() {
           <button onClick={() => setActiveTab("logs")} className={`flex items-center px-4 py-1.5 text-sm rounded ${activeTab==="logs"?"bg-white/20":""}`}><Activity className="mr-2 h-4 w-4" /> System Logs</button>
         </div>
 
-        <div className="bg-card-white rounded-xl border border-border-color p-5 shadow-sm col-span-1">
+        <div className="bg-card-white rounded-xl border border-border-color p-5 shadow-sm col-span-1 lg:col-span-2">
           <div className="text-xs font-bold text-bu-blue uppercase mb-2">Total Students</div>
           <div className="text-3xl font-extrabold text-bu-orange">{students.length}</div>
         </div>
 
-        <div className="bg-card-white rounded-xl border border-border-color p-5 shadow-sm col-span-1">
+        <div className="bg-card-white rounded-xl border border-border-color p-5 shadow-sm col-span-1 lg:col-span-2">
           <div className="text-xs font-bold text-bu-blue uppercase mb-2">Total Records</div>
           <div className="text-3xl font-extrabold text-bu-orange">{forms.length}</div>
-        </div>
-
-        <div className="bg-card-white rounded-xl border border-border-color p-5 shadow-sm col-span-2">
-          <div className="text-xs font-bold text-bu-blue uppercase mb-3">System Information</div>
-          <p className="text-sm text-text-muted mt-2">Bicol University Polangui Campus Admin Panel. Auto-backup is enabled.</p>
-          <p className="text-xs text-text-muted mt-2">Students register their own accounts via the public portal.</p>
         </div>
 
         <div className="bg-card-white rounded-xl border border-border-color p-5 shadow-sm col-span-1 md:col-span-2 lg:col-span-4">
@@ -271,7 +269,6 @@ export default function AdminDashboard() {
                             <th className="py-3 font-semibold whitespace-nowrap">Student ID</th>
                             <th className="py-3 font-semibold whitespace-nowrap">Reg. Date</th>
                             <th className="py-3 font-semibold whitespace-nowrap">Status</th>
-                            <th className="py-3 font-semibold text-right">Action</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -283,11 +280,6 @@ export default function AdminDashboard() {
                               <span className="bg-[#C6F6D5] text-[#22543D] px-2 py-1 rounded text-[10px] sm:text-xs font-bold w-max inline-block">
                                   {s.account_status}
                               </span>
-                          </td>
-                          <td className="py-3 text-right">
-                              <button onClick={()=>handleDeleteStudent(s.user_id)} className="text-red-500 hover:text-red-700 p-2 bg-red-50 hover:bg-red-100 rounded transition-colors inline-flex justify-center items-center">
-                                  <Trash2 className="w-4 h-4"/>
-                              </button>
                           </td>
                         </tr>
                       ))}
@@ -489,9 +481,6 @@ export default function AdminDashboard() {
                                      <button className="text-text-muted hover:text-bu-orange font-bold text-[10px] sm:text-xs inline-flex items-center tracking-wide mr-3">
                                        <Eye className="w-4 h-4 mr-1"/> VIEW
                                      </button>
-                                     <button onClick={(e) => handleDeleteRecord(e, f)} className="text-gray-400 hover:text-red-600 font-bold text-[10px] sm:text-xs inline-flex items-center tracking-wide">
-                                       <Trash2 className="w-4 h-4 mr-1"/> DEL
-                                     </button>
                                   </td>
                                 </tr>
                               ))}
@@ -573,7 +562,7 @@ export default function AdminDashboard() {
                         <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Contact Number</span><strong className="text-text-main">{selectedRecord.contact_number}</strong></div>
                         <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Email Address</span><strong className="text-text-main truncate block">{selectedRecord.email_address}</strong></div>
                         <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Cellphone No.</span><strong className="text-text-main">{selectedRecord.cellphone_num}</strong></div>
-                        <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Annual Income</span><strong className="text-green-700 bg-green-50 px-2 py-0.5 rounded border border-green-200">₱ {selectedRecord.annualfam_income || '0'}</strong></div>
+                        <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Annual Income</span><strong className="text-green-700 bg-green-50 px-2 py-0.5 rounded border border-green-200">{selectedRecord.annualfam_income || 'N/A'}</strong></div>
                         <div><span className="block text-text-muted text-[0.7rem] font-bold uppercase mb-1">Indigenous Group</span><strong className="text-text-main">{selectedRecord.indigenous_group || 'None'}</strong></div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm mt-6 pt-6 border-t border-gray-100">

@@ -205,17 +205,21 @@ export default function StudentDashboard() {
   const fetchRecords = async () => {
     if (!user?.id) return;
     try {
-      const docRef = doc(db, "student_records", user.id.toString());
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-         const recordData = docSnap.data();
-         setHistoricalData(recordData);
-         setFormData({...emptyForm, ...recordData});
-         setActiveTab("history");
-      } else {
-         // Conditional Redirect logic from requirements:
-         // If "first time logging in (no record found), redirect them to Identity Inventory Form."
-         setActiveTab("fill");
+      const res = await fetch("/api/forms/my", {
+          headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+          const records = await res.json();
+          if (records && records.length > 0) {
+             setHistoricalData(records[0]);
+             setFormData({...emptyForm, ...records[0]});
+             // Only change to history tab if we were not already in 'fill' to edit explicitly
+             if (activeTab !== "fill") {
+                setActiveTab("history");
+             }
+          } else {
+             setActiveTab("fill");
+          }
       }
     } catch (err) {
       console.error("Failed to fetch records:", err);
@@ -232,16 +236,26 @@ export default function StudentDashboard() {
          ...formData,
          user_id: user.id.toString(),
          student_number: user.student_number || "",
-         submittedAt: new Date().toISOString()
       };
       
-      await setDoc(doc(db, "student_records", user.id.toString()), recordPayload);
+      const res = await fetch("/api/forms", {
+          method: "POST",
+          headers: { 
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}` 
+          },
+          body: JSON.stringify(recordPayload)
+      });
       
-      setSuccessMsg("Identity Inventory Record Submitted Successfully!");
-      await fetchRecords();
-      setActiveTab("history");
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      setTimeout(() => setSuccessMsg(""), 5000);
+      if (res.ok) {
+          setSuccessMsg("Identity Inventory Record Submitted Successfully!");
+          await fetchRecords();
+          setActiveTab("history");
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          setTimeout(() => setSuccessMsg(""), 5000);
+      } else {
+          console.error("Failed to submit form API");
+      }
     } catch (err) {
       console.error("Failed to submit form:", err);
     }
@@ -296,11 +310,11 @@ export default function StudentDashboard() {
 
       <main className="flex-1 p-4 sm:p-6 max-w-5xl w-full mx-auto space-y-6">
         <div className="bg-bu-blue text-white px-4 sm:px-5 py-3 rounded-xl flex flex-wrap gap-2 sm:gap-4 justify-center sm:justify-start">
-          <button onClick={() => setActiveTab("fill")} className={`px-4 py-2 text-sm rounded ${activeTab === "fill" ? "bg-white/20" : ""}`}>Fill Form</button>
-          <button onClick={() => setActiveTab("history")} className={`px-4 py-2 text-sm rounded ${activeTab === "history" ? "bg-white/20" : ""}`}>My Record</button>
+          {!historicalData && <button onClick={() => setActiveTab("fill")} className={`px-4 py-2 text-sm rounded ${activeTab === "fill" ? "bg-white/20" : ""}`}>Fill Form</button>}
+          {historicalData && <button onClick={() => setActiveTab("history")} className={`px-4 py-2 text-sm rounded ${activeTab === "history" ? "bg-white/20" : ""}`}>My Record</button>}
         </div>
 
-        {activeTab === "fill" ? (
+        {activeTab === "fill" || (activeTab === "edit") ? (
              <form onSubmit={handleSubmit} className="space-y-6">
                 {successMsg && <div className="bg-[#C6F6D5] text-[#22543D] p-4 rounded font-bold">{successMsg}</div>}
                 
@@ -354,21 +368,19 @@ export default function StudentDashboard() {
                        
                        <div>
                          <label className="block text-[0.8rem] text-text-muted mb-1 font-semibold">Annual Income</label>
-                         <div className="relative">
-                           <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-500 font-semibold">₱</span>
-                           <input 
-                               type="text" 
-                               inputMode="numeric"
-                               pattern="[0-9]*"
-                               value={formData.annualfam_income} 
-                               onChange={(e) => {
-                                 const val = e.target.value.replace(/\D/g, "");
-                                 setFormData({ ...formData, annualfam_income: val });
-                               }} 
-                               className="w-full pl-8 pr-3 py-2 border border-border-color rounded focus:outline-none focus:border-bu-blue text-sm bg-white" 
-                               placeholder="150000" 
-                           />
-                         </div>
+                         <select 
+                             value={formData.annualfam_income} 
+                             onChange={(e) => setFormData({ ...formData, annualfam_income: e.target.value })} 
+                             className="w-full px-3 py-2 border border-border-color rounded focus:outline-none focus:border-bu-blue text-sm bg-white" 
+                             required
+                         >
+                             <option value="" disabled>Select Income Range</option>
+                             <option value="₱0 – ₱150,000">₱0 – ₱150,000</option>
+                             <option value="₱150,001 – ₱300,000">₱150,001 – ₱300,000</option>
+                             <option value="₱300,001 – ₱600,000">₱300,001 – ₱600,000</option>
+                             <option value="₱600,001 – ₱1,200,000">₱600,001 – ₱1,200,000</option>
+                             <option value="₱1,200,001 and above">₱1,200,001 and above</option>
+                         </select>
                        </div>
                        
                        <div>
@@ -588,7 +600,7 @@ export default function StudentDashboard() {
                               </dl>
                               <dl>
                                 <dt className="text-text-muted text-[10px] uppercase font-bold tracking-wider">Family Income</dt>
-                                <dd className="font-semibold">₱ {historicalData.annualfam_income || '0'}</dd>
+                                <dd className="font-semibold">{historicalData.annualfam_income || 'N/A'}</dd>
                               </dl>
                            </div>
                        </div>
