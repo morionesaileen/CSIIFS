@@ -39,13 +39,7 @@ export default function PrintableStudentRecord({ record, id }: PrintableStudentR
       <div className="flex items-center justify-center mb-6 border-b-2 border-black pb-4">
         {/* Placeholder for BU Logo. */}
         <div className="w-20 h-20 flex-shrink-0 flex items-center justify-center mr-4">
-          <img src="/bu-logo.png" alt="BU Logo" className="w-full h-full object-contain" 
-               onError={(e) => { 
-                 e.currentTarget.style.display = 'none'; 
-                 if (e.currentTarget.parentElement) {
-                    e.currentTarget.parentElement.innerHTML = '<div class="w-full h-full border-2 border-black rounded-full flex items-center justify-center text-xs font-bold">LOGO</div>';
-                 }
-               }} />
+          <img src="/images/bu-logo.png" alt="Bicol University Logo" className="w-full h-full object-contain" />
         </div>
         <div className="text-center">
           <h2 className="text-lg font-bold uppercase tracking-wide m-0">Bicol University Polangui Campus</h2>

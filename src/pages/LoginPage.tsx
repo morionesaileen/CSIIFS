@@ -1,16 +1,29 @@
 import React, { useState } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { ArrowLeft, GraduationCap } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff } from "lucide-react";
+import { auth } from "../firebase";
+import { signInWithEmailAndPassword } from "firebase/auth";
 
 export default function LoginPage() {
   const [searchParams] = useSearchParams();
   const role = searchParams.get("role") === "admin" ? "admin" : "student";
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, user } = useAuth();
+  
+  React.useEffect(() => {
+     if (user) {
+        if (user.role === 'Admin') {
+           navigate('/admin-dashboard');
+        } else if (user.role === 'Student') {
+           navigate('/student-dashboard');
+        }
+     }
+  }, [user, navigate]);
 
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -23,27 +36,27 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
 
-    const endpoint = role === "admin" ? "/api/login/admin" : "/api/login/student";
-    const payload = role === "admin" 
-      ? { username: identifier, password } 
-      : { student_number: identifier, password };
-
     try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Login failed");
+      if (role === "admin") {
+         const res = await fetch("/api/login/admin", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username: identifier, password }),
+         });
+         const data = await res.json();
+         if (!res.ok) throw new Error(data.error || "Login failed");
+         login(data.user, data.token);
+      } else {
+         const email = `${identifier.trim()}@bupolangui.edu.ph`;
+         await signInWithEmailAndPassword(auth, email, password);
+         // Redirect is handled by the AuthListener state changes
       }
-
-      login(data.user, data.token);
-      navigate(`/${role}-dashboard`);
     } catch (err: any) {
-      setError(err.message);
+      if (err.code === "auth/invalid-credential" || err.code === "auth/user-not-found") {
+         setError("Invalid student number or password. If you haven't yet, please sign up for an account first.");
+      } else {
+         setError(err.message || "An error occurred during login.");
+      }
     } finally {
       setLoading(false);
     }
@@ -72,8 +85,13 @@ export default function LoginPage() {
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Home
         </Link>
-        <div className="w-16 h-16 bg-bu-orange rounded-full flex items-center justify-center font-bold text-white shadow-lg mb-4">
-          <GraduationCap className="w-8 h-8" />
+        {/* Logo Container */}
+        <div className="relative w-16 h-16 mb-4 flex justify-center items-center">
+          <img 
+            src="/images/bu-logo.png" 
+            alt="Bicol University Logo" 
+            className="w-full h-full object-contain bg-transparent"
+          />
         </div>
         <h2 className="mt-2 text-center text-3xl font-extrabold text-text-main">
           Sign in to your account
@@ -111,14 +129,21 @@ export default function LoginPage() {
               <label className="block text-sm font-semibold text-text-muted mb-2">
                 Password
               </label>
-              <div>
+              <div className="relative">
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="appearance-none block w-full px-4 py-2.5 border border-border-color rounded-lg focus:outline-none focus:border-bu-blue focus:ring-1 focus:ring-bu-blue/50 sm:text-sm font-medium"
+                  className="appearance-none block w-full px-4 py-2.5 border border-border-color rounded-lg focus:outline-none focus:border-bu-blue focus:ring-1 focus:ring-bu-blue/50 sm:text-sm font-medium pr-10"
                 />
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-bu-blue focus:outline-none"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
               </div>
             </div>
 

@@ -222,7 +222,7 @@ export default function AdminDashboard() {
     <div className="min-h-screen flex flex-col font-sans bg-light-bg text-text-main">
       <header className="bg-bu-blue text-white px-4 sm:px-8 py-4 flex flex-col sm:flex-row justify-between items-center gap-4 border-b-4 border-bu-orange">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-bu-orange rounded-full flex items-center justify-center font-bold">BU</div>
+          <img src="/images/bu-logo.png" alt="Bicol University Logo" className="w-10 h-10 object-contain bg-transparent" />
           <div><h1 className="text-lg font-bold m-0 text-center sm:text-left">Admin Dashboard</h1></div>
         </div>
         <div className="flex flex-col items-center sm:items-end text-sm">

@@ -5,6 +5,8 @@ import { LogOut, FileText, History, CheckCircle, Settings, User as UserIcon, X }
 import AddressSelector from "../../components/AddressSelector";
 import { nationalities } from "../../data/nationalities";
 import { religions } from "../../data/religions";
+import { db } from "../../firebase";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 
 const AVATARS = [
   "https://api.dicebear.com/7.x/bottts/svg?seed=Felix",
@@ -201,36 +203,48 @@ export default function StudentDashboard() {
   };
 
   const fetchRecords = async () => {
+    if (!user?.id) return;
     try {
-      const res = await fetch("/api/forms/my", { headers: { Authorization: `Bearer ${token}` } });
-      if (res.ok) {
-        const records = await res.json();
-        if (records.length > 0) {
-            setHistoricalData(records[0]);
-            setFormData({...emptyForm, ...records[0]});
-        }
+      const docRef = doc(db, "student_records", user.id.toString());
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+         const recordData = docSnap.data();
+         setHistoricalData(recordData);
+         setFormData({...emptyForm, ...recordData});
+         setActiveTab("history");
+      } else {
+         // Conditional Redirect logic from requirements:
+         // If "first time logging in (no record found), redirect them to Identity Inventory Form."
+         setActiveTab("fill");
       }
-    } catch (err) {}
+    } catch (err) {
+      console.error("Failed to fetch records:", err);
+    }
   };
 
-  useEffect(() => { fetchRecords(); }, [activeTab]);
+  useEffect(() => { fetchRecords(); }, [activeTab, user?.id]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user?.id) return;
     try {
-      const res = await fetch("/api/forms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({...formData, student_number: user?.student_number})
-      });
-      if (res.ok) {
-        setSuccessMsg("Identity Inventory Record Submitted Successfully!");
-        await fetchRecords();
-        setActiveTab("history");
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        setTimeout(() => setSuccessMsg(""), 5000);
-      }
-    } catch (err) {}
+      const recordPayload = {
+         ...formData,
+         user_id: user.id.toString(),
+         student_number: user.student_number || "",
+         submittedAt: new Date().toISOString()
+      };
+      
+      await setDoc(doc(db, "student_records", user.id.toString()), recordPayload);
+      
+      setSuccessMsg("Identity Inventory Record Submitted Successfully!");
+      await fetchRecords();
+      setActiveTab("history");
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      setTimeout(() => setSuccessMsg(""), 5000);
+    } catch (err) {
+      console.error("Failed to submit form:", err);
+    }
   };
 
   return (
@@ -267,9 +281,15 @@ export default function StudentDashboard() {
           </div>
         </div>
         <div className="flex flex-col items-center sm:items-end text-sm w-full sm:w-auto mt-2 sm:mt-0">
-          <h1 className="text-lg font-bold text-center sm:text-right">Student Portal</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-lg font-bold text-center sm:text-right">Student Portal</h1>
+            <img src="/images/bu-logo.png" alt="Bicol University Logo" className="w-10 h-10 object-contain bg-transparent hidden sm:block" />
+          </div>
           <div className="sm:hidden mt-2">
-            <span className="font-semibold px-3 py-1 bg-white/10 rounded-full">Student No: {user?.student_number}</span>
+            <span className="font-semibold px-3 py-1 bg-white/10 rounded-full flex items-center gap-2">
+              <img src="/images/bu-logo.png" alt="Bicol University Logo" className="w-5 h-5 object-contain bg-transparent" />
+              Student No: {user?.student_number}
+            </span>
           </div>
         </div>
       </header>

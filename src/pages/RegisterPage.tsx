@@ -1,12 +1,17 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, GraduationCap } from "lucide-react";
+import { ArrowLeft, GraduationCap, Eye, EyeOff } from "lucide-react";
+import { auth, db } from "../firebase";
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import { doc, setDoc } from "firebase/firestore";
 
 export default function RegisterPage() {
   const navigate = useNavigate();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -22,23 +27,33 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const res = await fetch("/api/register/student", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ student_number: identifier, password }),
-      });
+      // Create Firebase Auth user generating a predictable email from Student Number
+      const email = `${identifier.trim()}@bupolangui.edu.ph`;
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const uid = userCredential.user.uid;
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Registration failed");
-      }
+      // Ensure that all student-submitted data is linked specifically to that UID
+      await setDoc(doc(db, "users", uid), {
+         user_id: uid,
+         student_number: identifier.trim(),
+         role: "Student",
+         account_status: "Active",
+         created_at: new Date().toISOString()
+      });
 
       setSuccess(true);
       setTimeout(() => {
+        // Redirection on successful client login happens naturally by the App Router reading AuthContext, but let's encourage it
         navigate("/login?role=student");
       }, 2000);
     } catch (err: any) {
-      setError(err.message);
+      if (err.code === "auth/email-already-in-use") {
+         setError("This Student Number is already registered.");
+      } else if (err.code === "auth/weak-password") {
+         setError("Password is too weak. Must be at least 6 characters.");
+      } else {
+         setError("Registration failed. " + err.message);
+      }
       setLoading(false);
     }
   };
@@ -50,9 +65,7 @@ export default function RegisterPage() {
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Home
         </Link>
-        <div className="w-16 h-16 bg-bu-orange rounded-full flex items-center justify-center font-bold text-white shadow-lg mb-4">
-          <GraduationCap className="w-8 h-8" />
-        </div>
+        <img src="/images/bu-logo.png" alt="Bicol University Logo" className="w-16 h-16 object-contain mb-4 bg-transparent" />
         <h2 className="mt-2 text-center text-3xl font-extrabold text-text-main">
           Create an account
         </h2>
@@ -95,15 +108,22 @@ export default function RegisterPage() {
               <label className="block text-sm font-semibold text-text-muted mb-2">
                 Password
               </label>
-              <div>
+              <div className="relative">
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   required
                   disabled={success}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="appearance-none block w-full px-4 py-2.5 border border-border-color rounded-lg focus:outline-none focus:border-bu-blue focus:ring-1 focus:ring-bu-blue/50 sm:text-sm font-medium"
+                  className="appearance-none block w-full px-4 py-2.5 border border-border-color rounded-lg focus:outline-none focus:border-bu-blue focus:ring-1 focus:ring-bu-blue/50 sm:text-sm font-medium pr-10"
                 />
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-bu-blue focus:outline-none"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
               </div>
             </div>
 
@@ -111,15 +131,22 @@ export default function RegisterPage() {
               <label className="block text-sm font-semibold text-text-muted mb-2">
                 Confirm Password
               </label>
-              <div>
+              <div className="relative">
                 <input
-                  type="password"
+                  type={showConfirmPassword ? "text" : "password"}
                   required
                   disabled={success}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="appearance-none block w-full px-4 py-2.5 border border-border-color rounded-lg focus:outline-none focus:border-bu-blue focus:ring-1 focus:ring-bu-blue/50 sm:text-sm font-medium"
+                  className="appearance-none block w-full px-4 py-2.5 border border-border-color rounded-lg focus:outline-none focus:border-bu-blue focus:ring-1 focus:ring-bu-blue/50 sm:text-sm font-medium pr-10"
                 />
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-bu-blue focus:outline-none"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                >
+                  {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
               </div>
             </div>
 
